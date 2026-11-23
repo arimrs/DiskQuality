@@ -81,8 +81,9 @@ This project is built upon and inspired by the following outstanding open-source
 
 ---
 
-## Disclaimer
+## Disclaimer & Usage Policy
 
-1. **Disk Wear & Heavy I/O Warning**: This benchmark performs sustained Direct I/O writes up to 50% of total disk capacity (clamped to ≤ 80% of free space). Only run it on servers where you are authorized to perform stress testing and understand the TBW wear and VPS provider ToS implications.
-2. **No Data Retention / No Warranty**: The ephemeral query server provides **no permanent storage**; all uploaded reports and generated views are automatically destroyed after **1 hour**. This software is provided "AS IS" under the MIT License without warranty of any kind.
-3. **Privacy**: Public IP addresses in reports are automatically masked (`/16` masked as `x.x.*.*`). Do not upload sensitive system information.
+1. **Completely Free · Modifications Welcome · No Paid Derivatives**: This project is **100% free and open-source**. Secondary development, forks, and modifications are welcome, provided attribution is retained. **Charging for, selling, paywalling, or commercially monetizing this project or any modified/derivative version of it is strictly prohibited.**
+2. **Disk Wear & Heavy I/O Warning**: This benchmark performs sustained Direct I/O writes up to 50% of total disk capacity (clamped to ≤ 80% of free space, and automatically cancelled if disk usage exceeds 65%). Only run it on servers where you are authorized to perform stress testing and understand the TBW wear and VPS provider ToS implications.
+3. **No Data Retention / No Warranty**: The ephemeral query server provides **no permanent storage**; all uploaded reports and generated views are automatically destroyed after **1 hour**. This software is provided "AS IS" without warranty of any kind.
+4. **Privacy**: Public IP addresses (IPv4/IPv6) in reports are automatically masked and hostnames are not recorded. Do not upload sensitive system information.
