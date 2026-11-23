@@ -243,8 +243,8 @@ def render_report_html(rid, data, rem_sec):
   .grp{{display:flex;flex-wrap:wrap;gap:8px}}
   .btn{{cursor:pointer;background:transparent;color:#d4d4d8;border:1px solid #4a4d57;border-radius:3px;padding:5px 12px;font-size:13px;transition:0.12s}}
   .btn:hover{{background:#272930;border-color:#717584;color:#fff}}
-  .card{{background:#1d1e22;border:1px solid #2b2d33;border-radius:6px;overflow:hidden}}
-  .tabbar{{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px 6px;background:#1d1e22}}
+  .card{{background:#1b1c1f;border:1px solid #2b2d33;border-radius:8px;overflow:hidden}}
+  .tabbar{{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px 4px;background:#1b1c1f}}
   .tabs{{display:inline-flex;flex-wrap:wrap;gap:4px;background:#141518;padding:4px;border-radius:5px;border:1px solid #26282e}}
   .tab{{cursor:pointer;background:transparent;color:#3fb950;border:none;border-radius:4px;padding:5px 13px;font-size:13px;font-weight:500;transition:0.12s}}
   .tab:hover{{color:#86efac;background:#22242a}}

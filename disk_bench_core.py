@@ -23,6 +23,7 @@ import socket
 import shutil
 import argparse
 import subprocess
+import unicodedata
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -169,7 +170,10 @@ E = "\x1b"
 C_RST, C_B, C_U = f"{E}[0m", f"{E}[1m", f"{E}[4m"
 C_CYN, C_GRN, C_YEL, C_RED = f"{E}[36m", f"{E}[32m", f"{E}[33m", f"{E}[31m"
 C_BRED = f"{E}[1m{E}[31m"
-C_INV = f"{E}[1m{E}[4m{E}[47m{E}[30m"
+C_INV = f"{E}[1m{E}[47m{E}[30m"
+C_BG_GRN = f"{E}[1m{E}[42m{E}[37m"
+C_BG_RED = f"{E}[1m{E}[41m{E}[37m"
+C_BG_YEL = f"{E}[1m{E}[43m{E}[30m"
 
 
 def calc_adaptive_plan(target_dir="/", total_minutes=20.0):
@@ -493,26 +497,21 @@ def build_sections(data, lang=None, site_url=None):
     t, p = data["topology"], data["plan"]
     sel = data.get("selected", {})
 
-    # Page 0: Overview & Topology + ioping
+    # Page 0: Overview & Topology + ioping (clean HardwareQuality layout, zero credits wall)
     sec_overview = [
         "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
         f"               {C_B}{L['title']}: {C_CYN}{t['masked_ip']}{C_RST}",
-        f"                    {C_U}bash <(curl -sL {s_url}){C_RST}",
-        f"          {L['algo_line'].format(gb=p['stress_file_gb'], mins=p['budget_total_min'], elapsed=data['elapsed_min'])}",
-        f"          {L['time_ver'].format(t=data['report_time'], v=data['version'])}",
+        f"               {C_U}https://github.com/arimrs/DiskQuality{C_RST}",
+        f"                bash <(curl -sL {s_url})",
+        f"     {L['time_ver'].format(t=data['report_time'], v=data['version'])}",
         "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
-        f"{C_CYN}{L['credits_hdr']}{C_RST}",
-        "  fio (github.com/axboe/fio) | ioping (github.com/koct9i/ioping) | sysstat (github.com/sysstat/sysstat)",
-        "  smartmontools (smartmontools.org) | e2fsprogs (e2fsprogs.sourceforge.net) | curl (curl.se)",
-        "  ipinfo.io | speed.cloudflare.com | cachefly.com | NodeQuality | HardwareQuality | IPQuality",
-        "--------------------------------------------------------------------------------",
         L["s1"],
         f"{C_CYN}{L['k_virt']}{C_GRN}{t['virt']} ({t['arch']}){C_RST}",
         f"{C_CYN}{L['k_os']}{C_GRN}{t['os']}{C_RST}",
-        f"{C_CYN}{L['k_cpu']}{C_INV}{t['cpu_model']}{C_RST}",
-        f"                        {C_GRN}╚═ {L['cpu_sub'].format(cores=t['cpu_cores'], mhz=t['cpu_mhz'], load=t['loadavg'])}{C_RST}",
-        f"{C_CYN}{L['k_mem']}{C_GRN}{L['mem_val'].format(mem=t['mem'], swap=t['swap'])}{C_RST}",
-        f"{C_CYN}{L['k_disk']}{C_INV}{L['disk_val'].format(model=t['disk_model'], tot=p['disk_total_gb'], used=p['disk_used_gb'], avail=p['disk_avail_gb'])}{C_RST}",
+        f"{C_CYN}{L['k_cpu']}{C_INV} {t['cpu_model']} {C_RST}",
+        f"                        {C_INV} ╚═ {L['cpu_sub'].format(cores=t['cpu_cores'], mhz=t['cpu_mhz'], load=t['loadavg'])} {C_RST}",
+        f"{C_CYN}{L['k_mem']}{C_INV} {L['mem_val'].format(mem=t['mem'], swap=t['swap'])} {C_RST}",
+        f"{C_CYN}{L['k_disk']}{C_INV} {L['disk_val'].format(model=t['disk_model'], tot=p['disk_total_gb'], used=p['disk_used_gb'], avail=p['disk_avail_gb'])} {C_RST}",
         f"{C_CYN}{L['k_dev']}{C_GRN}{L['dev_val'].format(dev=t['mount_dev'], fs=t['fs_type'], rota=t['rotational'], sched=t['scheduler'])}{C_RST}",
         f"{C_CYN}{L['k_cache']}{C_GRN}{L['cache_val'].format(wc=t['write_cache'], ra=t['read_ahead_kb'], sec=t['sector'], trim=L['trim_yes'] if t['trim_supported'] else L['trim_no'])}{C_RST}",
         f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'])}{C_RST}",
@@ -602,22 +601,23 @@ def build_sections(data, lang=None, site_url=None):
         sec_netip.append(f"{C_CYN}{L['k_res']}{skip}")
     else:
         im = ipq["meta"]
-        rk_map = {"low": (C_GRN, L["risk_low"]), "mid": (C_YEL, L["risk_mid"]), "high": (C_RED, L["risk_high"])}
-        rk_col, rk_lbl = rk_map.get(ipq["risk"], (C_YEL, ipq["risk"]))
-        p25_col, p25_lbl = (C_GRN, L["p25_ok"]) if ipq["port25_open"] else (C_RED, L["p25_no"])
+        rk_map = {"low": (C_BG_GRN, L["risk_low"]), "mid": (C_BG_YEL, L["risk_mid"]), "high": (C_BG_RED, L["risk_high"])}
+        rk_col, rk_lbl = rk_map.get(ipq["risk"], (C_BG_YEL, ipq["risk"]))
+        p25_badge = f"{C_BG_GRN} ✔ {L['p25_ok']} {C_RST}" if ipq["port25_open"] else f"{C_BG_RED} ✘ {L['p25_no']} {C_RST}"
         sec_netip += [
             f"{C_CYN}{L['k_asn']}{C_GRN}{im['asn']} ({im['org']}) · {im['location']}{C_RST}",
             f"{C_CYN}{L['k_ipattr']}{C_YEL}{im['hosting']}{C_RST}",
-            f"{C_CYN}{L['k_p25']}{p25_col}{p25_lbl}{C_RST}",
-            f"{C_CYN}{L['k_deny']}{rk_col}{ipq['denial_pct']}% ({ipq['denied_count']}/{ipq['total_probes']}) — {rk_lbl}{C_RST}",
+            f"{C_CYN}{L['k_p25']}{p25_badge}",
+            f"{C_CYN}{L['k_deny']}{rk_col} {ipq['denial_pct']}% ({ipq['denied_count']}/{ipq['total_probes']}) {rk_lbl} {C_RST}",
         ]
         row_items = []
         for pr in ipq.get("probes", []):
-            st_c = C_GRN if pr["ok"] else C_RED
-            st_l = L["st_ok"] if pr["ok"] else L["st_blk"]
-            row_items.append(f"{pr['service']}:{st_c}{st_l}({pr['code']}){C_RST}")
-        sec_netip.append("  " + " | ".join(row_items[:5]))
-        sec_netip.append("  " + " | ".join(row_items[5:]))
+            if pr["ok"]:
+                row_items.append(f"{C_BG_GRN} ✔ {pr['service']} {C_RST}")
+            else:
+                row_items.append(f"{C_BG_RED} ✘ {pr['service']}({pr['code']}) {C_RST}")
+        sec_netip.append("  " + "  ".join(row_items[:5]))
+        sec_netip.append("  " + "  ".join(row_items[5:]))
 
     # Page 4: Metadata & Lifetime
     sec_meta = [L["s9"]]
@@ -654,8 +654,17 @@ def strip_ansi(s):
     return re.sub(r'\x1b\[[0-9;]*m', '', s)
 
 
-ANSI_COLOR_MAP = {"30": "#111318", "31": "#f87171", "32": "#4ade80", "33": "#fbbf24", "34": "#60a5fa", "35": "#e879f9", "36": "#38bdf8", "37": "#f8fafc"}
-ANSI_BG_MAP = {"41": "#dc2626", "42": "#16a34a", "43": "#ca8a04", "46": "#0891b2", "47": "#e4e4e7"}
+ANSI_COLOR_MAP = {
+    "30": "#18181b", "31": "#e05252", "32": "#52b758", "33": "#d4a017",
+    "34": "#60a5fa", "35": "#c084fc", "36": "#3ba7a0", "37": "#f4f4f5",
+}
+ANSI_BG_MAP = {
+    "41": "#c92a2a", "42": "#52a31c", "43": "#b45309", "46": "#0e7490", "47": "#d8d8d8",
+}
+
+
+def _disp_cells(s):
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
 
 
 def parse_ansi_spans(line):
@@ -677,23 +686,31 @@ def parse_ansi_spans(line):
 
 
 def render_ansi_to_svg_str(ansi_text):
-    """Minimalist matte dark terminal SVG renderer matching NodeQuality aesthetic."""
+    """HardwareQuality / NodeQuality faithful charcoal terminal SVG renderer with real highlight bars & status badges."""
     lines = ansi_text.splitlines()
-    line_height, pad_x, pad_y, width = 25, 28, 28, 1020
-    height = pad_y * 2 + len(lines) * line_height + 12
+    line_height, pad_x, pad_y, char_w, width = 22, 26, 24, 8.4, 960
+    height = pad_y * 2 + len(lines) * line_height + 10
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<defs><style>text { font-family: "JetBrains Mono","Cascadia Mono","Consolas","Microsoft YaHei","Noto Sans Mono CJK SC",monospace; font-size: 15px; letter-spacing: 0.15px; white-space: pre; }</style></defs>',
-        f'<rect width="100%" height="100%" fill="#1d1e22"/>',
+        '<defs><style>text { font-family: "JetBrains Mono","Cascadia Mono","Consolas","Microsoft YaHei","Noto Sans Mono CJK SC",monospace; font-size: 14px; white-space: pre; }</style></defs>',
+        '<rect width="100%" height="100%" rx="8" fill="#1b1c1f"/>',
     ]
     for idx, line in enumerate(lines):
-        y = pad_y + (idx + 1) * line_height - 6
-        els = []
+        y = pad_y + (idx + 1) * line_height - 5
+        rects, els = [], []
+        col_x = 0
         for txt, fg, bg, bold, ul in parse_ansi_spans(line):
-            fw = ' font-weight="700"' if (bold or bg == "#e4e4e7") else ''
+            cells = _disp_cells(txt)
+            if bg:
+                rx_x = pad_x + col_x * char_w
+                rx_w = max(cells * char_w + 2, 12)
+                rects.append(f'<rect x="{rx_x:.1f}" y="{y - 14.5:.1f}" width="{rx_w:.1f}" height="18.5" rx="2" fill="{bg}"/>')
+            fw = ' font-weight="700"' if bold else ''
             td = ' text-decoration="underline"' if ul else ''
-            fill_c = "#ffffff" if bg == "#e4e4e7" else fg
+            fill_c = "#18181b" if bg == "#d8d8d8" else ("#ffffff" if bg in ("#52a31c", "#c92a2a") else fg)
             els.append(f'<tspan fill="{fill_c}"{fw}{td}>{html.escape(txt)}</tspan>')
+            col_x += cells
+        svg.extend(rects)
         svg.append(f'<text x="{pad_x}" y="{y}" xml:space="preserve">{"".join(els)}</text>')
     svg.append("</svg>")
     return "\n".join(svg)
