@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="380" viewBox="0 0 820 380">
+<rect width="100%" height="100%" rx="8" fill="#1b1c1f" stroke="#2b2d33" stroke-width="1"/>
+<text x="64" y="34" fill="#f4f4f5" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="16" font-weight="600">arimrs/DiskQuality — Star History</text>
+<text x="786" y="34" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="12">★ 0  ·  Updated 2026-11-23 13:21 Taipei</text>
+<line x1="64" y1="324.0" x2="786" y2="324.0" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="328.0" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">0</text>
+<line x1="64" y1="270.8" x2="786" y2="270.8" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="274.8" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">1</text>
+<line x1="64" y1="217.6" x2="786" y2="217.6" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="221.6" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">2</text>
+<line x1="64" y1="164.4" x2="786" y2="164.4" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="168.4" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">3</text>
+<line x1="64" y1="111.2" x2="786" y2="111.2" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="115.2" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">4</text>
+<line x1="64" y1="58.0" x2="786" y2="58.0" stroke="#2d3038" stroke-width="1"/>
+<text x="54" y="62.0" text-anchor="end" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">5</text>
+<line x1="64" y1="324.0" x2="786" y2="324.0" stroke="#3fb950" stroke-width="2" stroke-dasharray="4 4"/>
+<circle cx="425.0" cy="324.0" r="4.5" fill="#3fb950"/>
+<text x="425.0" y="358" text-anchor="middle" fill="#9ca3af" font-family="ui-monospace,Consolas,monospace" font-size="11">2026-11-23</text>
+</svg>

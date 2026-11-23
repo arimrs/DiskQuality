@@ -63,6 +63,18 @@ systemctl daemon-reload && systemctl enable --now diskquality-web.service
 
 ---
 
+## Star 增长曲线
+
+<a href="https://github.com/arimrs/DiskQuality/stargazers">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/star-history-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/star-history-light.svg" />
+    <img alt="Star History Chart" src="assets/star-history-light.svg" />
+  </picture>
+</a>
+
+---
+
 ## 致谢与底层检测工具原站
 
 本项目基于以下优秀开源项目与公共测速节点构建，并致敬其设计理念：

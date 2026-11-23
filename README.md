@@ -62,6 +62,18 @@ Reverse proxy port `8765` with Nginx/Caddy (Cloudflare CDN can cache `/run.sh` a
 
 ---
 
+## Star History
+
+<a href="https://github.com/arimrs/DiskQuality/stargazers">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/star-history-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/star-history-light.svg" />
+    <img alt="Star History Chart" src="assets/star-history-light.svg" />
+  </picture>
+</a>
+
+---
+
 ## Acknowledgments & Upstream Tools
 
 This project is built upon and inspired by the following outstanding open-source projects and public test endpoints:
