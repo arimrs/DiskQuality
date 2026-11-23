@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.3 — Bilingual Objective VPS Disk, Concurrency, Global Network & IP Quality Suite
+DiskQuality v1.0.4 — Bilingual Objective VPS Disk, Concurrency, Global Network & IP Quality Suite
 - Tailored for PT / Storage / Backup VPS evaluation (pure objective data, zero subjective advice)
-- Adaptive 50% capacity / 20-minute endurance algorithm
+- Adaptive 50% capacity / 20-minute endurance algorithm with >65% disk usage safety guard
+- Live visual progress bar, thorough pre/post environment cleanup, and friendly kaomoji UX
 - Interactive module selection: skipped modules render as bold red "？？？" (zh) / "???" (en)
 - Supports paginated web cards, full panorama SVG/PNG, NodeSeek multi-tab, and standard Markdown
 """
@@ -14,6 +15,8 @@ import sys
 import json
 import html
 import time
+import signal
+import atexit
 import socket
 import shutil
 import argparse
@@ -21,8 +24,8 @@ import subprocess
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.3 (2026.11.22)"
-DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://your-domain.example")
+VERSION = "v1.0.4 (2026.11.23)"
+DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
     ("fio", "https://github.com/axboe/fio"),
@@ -690,38 +693,106 @@ def render_standard_md(data, lang=None, site_url=None):
     )
 
 
+def thorough_cleanup(work_dir, target_dir="/", do_trim=False):
+    """Thoroughly remove all temporary benchmark directories/files and optionally TRIM."""
+    if os.path.exists(work_dir):
+        shutil.rmtree(work_dir, ignore_errors=True)
+    run_cmd("sync 2>/dev/null || true")
+    if do_trim:
+        run_cmd(f"fstrim '{target_dir}' 2>/dev/null || true")
+
+
 def run_benchmark_cli(args):
     lang = args.lang.lower() if args.lang.lower() in ("zh", "en") else "zh"
     L = I18N[lang]
     work_dir = os.path.join(args.target.rstrip("/") or "/", ".diskquality_work")
-    os.makedirs(work_dir, exist_ok=True)
     t_start = time.time()
     tz = timezone(timedelta(hours=8)) if lang == "zh" else timezone.utc
     start_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S " + ("CST" if lang == "zh" else "UTC"))
 
-    def prog(msg_zh, msg_en):
-        ts = datetime.now(tz).strftime("%H:%M:%S")
-        print(f"{C_CYN}[{ts}]{C_RST} {msg_en if lang == 'en' else msg_zh}", flush=True)
+    # 1. Thorough pre-test cleanup & signal/exit trap (ensures zero leftover files even on Ctrl+C)
+    thorough_cleanup(work_dir, args.target, do_trim=False)
+    active_procs = []
 
+    def _emergency_cleanup(*_a):
+        for p in list(active_procs):
+            try:
+                p.terminate()
+                p.wait(timeout=2)
+            except Exception:
+                try: p.kill()
+                except Exception: pass
+        thorough_cleanup(work_dir, args.target, do_trim=False)
+
+    atexit.register(_emergency_cleanup)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, lambda s, f: (_emergency_cleanup(), sys.exit(130)))
+        except Exception:
+            pass
+
+    # 2. Pre-test disk space scan (abort if usage > 65%)
+    usage = shutil.disk_usage(args.target)
+    used_pct = (usage.used * 100.0 / usage.total) if usage.total > 0 else 0.0
+    if used_pct > 65.0:
+        if lang == "en":
+            print(f"{C_RED}[Abort] Disk usage is {used_pct:.1f}% (> 65%). Insufficient disk space, benchmark automatically cancelled (；′⌒`){C_RST}", flush=True)
+        else:
+            print(f"{C_RED}[终止] 当前硬盘占用 {used_pct:.1f}% (> 65%)，硬盘空间不足，已自动取消运行 (；′⌒`){C_RST}", flush=True)
+        sys.exit(1)
+
+    os.makedirs(work_dir, exist_ok=True)
     sel = {k: getattr(args, k).lower() == "y" for k in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta")}
-    prog("[1/9] 正在采集系统与块设备拓扑...", "[1/9] Collecting system & block device topology...")
+
+    # 3. Visual progress bar tracker with varied kaomoji
+    kaomojis = [
+        "( •̀ ω •́ )✧", "(ง •̀_•́)ง", "(๑•̀ㅂ•́)و✧", "ヾ(•ω•`)o",
+        "(o´ω`o)ﾉ", "٩(｡•́‿•̀｡)۶", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(*^▽^*)",
+    ]
+    total_steps = (
+        1  # topology
+        + (1 if sel["ioping"] else 0)
+        + (14 if sel["matrix"] else 0)
+        + (4 if sel["prod"] else 0)
+        + (4 if sel["concurrency"] else 0)
+        + (2 if sel["sustained"] else 0)
+        + (1 if sel["network"] else 0)
+        + (1 if sel["ip_quality"] else 0)
+        + (1 if sel["meta"] else 0)
+        + 1  # final cleanup & report
+    )
+    step_state = {"cur": 0}
+
+    def show_bar(msg_zh, msg_en, advance=1):
+        step_state["cur"] = min(total_steps, step_state["cur"] + advance)
+        pct = int(round(step_state["cur"] * 100.0 / max(1, total_steps)))
+        filled = int(round(24 * pct / 100.0))
+        bar = "█" * filled + "░" * (24 - filled)
+        ts = datetime.now(tz).strftime("%H:%M:%S")
+        emo = kaomojis[step_state["cur"] % len(kaomojis)]
+        msg = msg_en if lang == "en" else msg_zh
+        print(f"{C_CYN}[{ts}]{C_RST} {C_GRN}[{bar}]{C_RST} {C_YEL}{pct:3d}%{C_RST} | {msg} {emo}", flush=True)
+
+    show_bar("正在采集系统与块设备拓扑...", "Collecting system & block device topology...", advance=0)
     plan = calc_adaptive_plan(args.target, args.minutes)
     topo = collect_system_topology(args.target)
-    prog(
-        f"      目标容量 {plan['disk_total_gb']} GB | 50% 自适应压测文件 {plan['stress_file_gb']} GB | 预算 {args.minutes:.0f} 分钟",
-        f"      Disk {plan['disk_total_gb']} GB | 50% Adaptive Stress File {plan['stress_file_gb']} GB | Budget {args.minutes:.0f} min",
+    show_bar(
+        f"拓扑完成 · 目标盘 {plan['disk_total_gb']} GB (已用 {used_pct:.1f}%) · 50% 压测文件 {plan['stress_file_gb']} GB",
+        f"Topology ready · Disk {plan['disk_total_gb']} GB (used {used_pct:.1f}%) · 50% Stress File {plan['stress_file_gb']} GB",
+        advance=1,
     )
 
     ioping_res = None
     if sel["ioping"]:
-        prog("[2/9] 正在运行底层延迟基线测试 (ioping)...", "[2/9] Running latency baseline (ioping)...")
+        show_bar("正在运行底层延迟基线测试 (ioping)...", "Running latency baseline (ioping)...", advance=0)
         ioping_res = run_ioping_tests(work_dir)
+        show_bar("底层延迟基线测试 (ioping) 完成", "Latency baseline (ioping) completed", advance=1)
+
     mfile, sfile = os.path.join(work_dir, "matrix.bin"), os.path.join(work_dir, "stress_50pct.bin")
     rt, msz = plan["matrix_item_sec"], plan["matrix_file_gb"]
 
     matrix_res = None
     if sel["matrix"]:
-        prog(f"[3/9] 正在运行 FIO 14 项合成性能矩阵 ({msz} GB, 每项 {rt}s)...", f"[3/9] Running FIO 14-item synthetic matrix ({msz} GB, {rt}s each)...")
         specs = [
             ("SEQ1M_R_Q1", "read", "1M", 1, 1, 1, None, None), ("SEQ1M_R_Q32", "read", "1M", 32, 4, 1, None, None),
             ("SEQ1M_W_Q1", "write", "1M", 1, 1, 1, None, None), ("SEQ1M_W_Q32", "write", "1M", 32, 4, 1, None, None),
@@ -733,24 +804,24 @@ def run_benchmark_cli(args):
         ]
         matrix_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(specs, 1):
-            print(f"      -> FIO Matrix [{idx}/{len(specs)}] {n} ...", flush=True)
+            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] 正在测 {n}...", f"FIO Matrix [{idx}/{len(specs)}] {n}...", advance=0)
             matrix_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] {n} 完成", f"FIO Matrix [{idx}/{len(specs)}] {n} done", advance=1)
 
     prod_res = None
     if sel["prod"]:
-        prog("[4/9] 正在运行生产模型与 fsync 事务刷盘测试...", "[4/9] Running production workloads & fsync commit...")
         pspecs = [
             ("OLTP_8K_Q32", "randrw", "8K", 32, 2, 1, 70, None), ("WEB_16K_Q8", "randrw", "16K", 8, 2, 1, 50, None),
             ("WAL_4K_FSYNC1", "write", "4K", 1, 1, 1, None, 1), ("CONG_4K_FSYNC4", "randwrite", "4K", 32, 2, 1, None, 4),
         ]
         prod_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(pspecs, 1):
-            print(f"      -> Production [{idx}/{len(pspecs)}] {n} ...", flush=True)
+            show_bar(f"生产模型 [{idx}/{len(pspecs)}] 正在测 {n}...", f"Production [{idx}/{len(pspecs)}] {n}...", advance=0)
             prod_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            show_bar(f"生产模型 [{idx}/{len(pspecs)}] {n} 完成", f"Production [{idx}/{len(pspecs)}] {n} done", advance=1)
 
     conc_res = None
     if sel["concurrency"]:
-        prog("[5/9] 正在运行小量多并发 I/O 压测 (PT 做种/校验/并发备份)...", "[5/9] Running small-block high-concurrency I/O (PT/Backup)...")
         cspecs = [
             ("PT_SEED_16K_32T",  "randread", "16K",  4, 32, 1, None, None),
             ("PT_HASH_256K_16T", "read",     "256K", 4, 16, 1, None, None),
@@ -759,8 +830,9 @@ def run_benchmark_cli(args):
         ]
         conc_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(cspecs, 1):
-            print(f"      -> Concurrency [{idx}/{len(cspecs)}] {n} ...", flush=True)
+            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] 正在测 {n}...", f"Concurrency [{idx}/{len(cspecs)}] {n}...", advance=0)
             conc_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] {n} 完成", f"Concurrency [{idx}/{len(cspecs)}] {n} done", advance=1)
 
     try: os.remove(mfile)
     except Exception: pass
@@ -769,46 +841,50 @@ def run_benchmark_cli(args):
     if sel["sustained"]:
         seq_m = round(plan["sustained_seq_sec"] / 60.0, 1)
         mix_m = round(plan["sustained_mix_sec"] / 60.0, 1)
-        prog(
-            f"[6/9] 正在运行 50% 容量 ({plan['stress_file_gb']} GB) 持久压测 + iostat (顺序写 {seq_m}分 + 随机混合 {mix_m}分)...",
-            f"[6/9] Running 50% capacity ({plan['stress_file_gb']} GB) endurance stress + iostat ({seq_m}m seq + {mix_m}m mixed)...",
-        )
         iostat_log = os.path.join(work_dir, "iostat_raw.log")
         dev_short = os.path.basename(topo["base_dev"])
         io_proc = subprocess.Popen(f"iostat -dxm {dev_short} 5 > '{iostat_log}' 2>&1", shell=True)
+        active_procs.append(io_proc)
         try:
-            print(f"      -> Phase A: Sequential Write ({plan['stress_file_gb']} GB, {plan['sustained_seq_sec']}s) ...", flush=True)
+            show_bar(
+                f"50% 容量持久压测 阶段 A 顺序写 ({plan['stress_file_gb']} GB, {seq_m} 分钟)...",
+                f"50% Endurance Phase A Seq Write ({plan['stress_file_gb']} GB, {seq_m} min)...",
+                advance=0,
+            )
             sw = run_fio_job("SUSTAINED_50PCT_SEQ_W", sfile, plan["stress_file_gb"], "write", "1M", 16, 1, plan["sustained_seq_sec"], 1)
-            print(f"      -> Phase B: Random Mixed 30/70 ({plan['stress_file_gb']} GB, {plan['sustained_mix_sec']}s) ...", flush=True)
+            show_bar("50% 容量持久压测 阶段 A 完成，进入阶段 B 随机混合...", "50% Endurance Phase A done, starting Phase B Mixed...", advance=1)
             ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], 1, 30)
+            show_bar("50% 容量持久压测 阶段 B 完成", "50% Endurance Phase B completed", advance=1)
         finally:
             io_proc.terminate()
             try: io_proc.wait(timeout=5)
             except Exception: io_proc.kill()
+            if io_proc in active_procs: active_procs.remove(io_proc)
             try: os.remove(sfile)
             except Exception: pass
         sustained_res = {"seq_write": sw, "rand_mixed": ms, "timeline": parse_iostat_minutes(iostat_log, dev_short, plan["sustained_seq_sec"] // 60)}
 
     net_res = None
     if sel["network"]:
-        prog("[7/9] 正在运行全球 8 大单播节点互联延迟与大文件下行测试...", "[7/9] Running 8-hub global TCP latency & bulk download tests...")
+        show_bar("正在测试全球 8 大单播节点延迟与大文件下行...", "Running 8-hub global TCP latency & bulk download...", advance=0)
         net_res = run_global_network_tests()
+        show_bar("国际互联与大文件下行测试完成", "Global connectivity & download tests completed", advance=1)
 
     ipq_res = None
     if sel["ip_quality"]:
-        prog("[8/9] 正在运行 IP 质量、25 端口与 10 大平台可达性探测...", "[8/9] Running IP quality, Port 25 & 10-platform reachability probes...")
+        show_bar("正在探测 IP 质量、25 端口与 10 大平台可达性...", "Probing IP quality, Port 25 & 10-platform reachability...", advance=0)
         ipq_res = run_ip_quality_tests()
+        show_bar("IP 质量与被拒访问概率评估完成", "IP quality & denial probability completed", advance=1)
 
     meta_res, life_res = None, None
     if sel["meta"]:
-        prog("[9/9] 正在运行 10,000 小文件元数据测试与 SMART/Ext4 寿命读取...", "[9/9] Running 10,000-file metadata & SMART/Ext4 lifetime diagnostics...")
+        show_bar("正在运行 10,000 小文件元数据与 SMART/Ext4 寿命读取...", "Running 10,000-file metadata & SMART/Ext4 lifetime...", advance=0)
         meta_res = run_metadata_bench(work_dir)
         life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"])
+        show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance=1)
 
-    prog("正在清理临时文件并生成报告...", "Cleaning up temporary files and generating report...")
-
-    shutil.rmtree(work_dir, ignore_errors=True)
-    run_cmd(f"fstrim '{args.target}' 2>/dev/null || true")
+    thorough_cleanup(work_dir, args.target, do_trim=True)
+    show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1)
 
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,
@@ -823,7 +899,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.3"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.4"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))

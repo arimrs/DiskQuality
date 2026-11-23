@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.3 — Paginated Ephemeral Web & API Server (Bilingual zh/en)
+DiskQuality v1.0.4 — Paginated Ephemeral Web & API Server (Bilingual zh/en)
 - Paginated report viewer (6 interactive pages + Prev/Next + Arrow-Key navigation)
 - Enhanced typography & high-contrast dark theme
 - Zero persistence (/tmp storage, strict 1h TTL auto-destroy, 410 Gone after expiry)
@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DQ_DATA_DIR", "/tmp/diskquality_ephemeral")
-SITE_URL = os.environ.get("DQ_SITE_URL", "https://your-domain.example")
+SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 PORT = int(os.environ.get("DQ_PORT", "8765"))
 TTL_SECONDS = int(os.environ.get("DQ_TTL_SECONDS", "3600"))
 MAX_REPORTS = 200

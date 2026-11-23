@@ -1,5 +1,18 @@
 # Changelog / 更新日志
 
+## v1.0.4 (2026.11.23)
+### English
+- **Live Visual Progress Bar & Friendly Kaomoji UX**: Added a real-time 24-block terminal progress bar (`[████████░░░░░░░░░░░░]  42%`) with timestamped per-step updates and varied kaomoji across interactive prompts and execution phases (keeping objective report outputs 100% clean).
+- **Pre-Test Disk Space Guard (> 65% Abort)**: Added automatic disk usage pre-scanning on the target mount point; if usage exceeds **65%**, the benchmark immediately aborts with an insufficient disk space notice.
+- **Thorough Pre-Test & Post-Test Environment Cleanup**: Automatically sweeps stale `.diskquality_work` directories and temporary scripts before starting, cleans up and runs `sync` + `fstrim` after completion, and installs `EXIT`/`SIGINT`/`SIGTERM` signal traps so even `Ctrl+C` aborts leave zero leftover files or orphan child processes.
+
+### 简体中文
+- **实时可视化进度条与多样颜文字交互**：新增终端实时可视化进度条（`[████████░░░░░░░░░░░░]  42%`）与带时间戳的逐项执行回显，在交互提示与执行阶段加入多样颜文字提升体验（客观报告正文与导出图片保持纯净无干扰）。
+- **测试前硬盘空间预检熔断（> 65% 自动取消）**：开始测试前自动扫描目标挂载盘占用率，若占用高于 **65%** 则直接提示“硬盘空间不足，已自动取消运行”并安全退出。
+- **测试前/后及中断时彻底环境清理**：开始前自动清扫残留的 `.diskquality_work` 与历史临时脚本，测试结束后彻底删除全部临时文件并执行 `sync` + `fstrim`，同时挂载 `EXIT`/`SIGINT`/`SIGTERM` 信号捕获，即使中途 `Ctrl+C` 也不会留下垃圾文件或僵尸进程。
+
+---
+
 ## v1.0.3 (2026.11.22)
 ### English
 - **Expanded PT / Storage / Backup Benchmark Coverage**:

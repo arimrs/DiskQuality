@@ -2,12 +2,13 @@
 
 # DiskQuality
 
-[![Version](https://img.shields.io/badge/version-v1.0.3-22c55e.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.4-22c55e.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux VPS benchmark suite built for **PT seedboxes, storage VPS, and backup servers**, paired with an ephemeral paginated query server.
 
-- **Adaptive 50% Capacity Algorithm**: Automatically scales the endurance stress file to **50% of total disk capacity** (safely clamped to ≤ 80% of available space to prevent root-partition exhaustion) within a **20-minute budget**.
+- **Adaptive 50% Capacity Algorithm & >65% Disk Guard**: Automatically scales the endurance stress file to **50% of total disk capacity** (clamped to ≤ 80% of free space) within a **20-minute budget**. Runs a pre-test disk usage scan and **automatically cancels if disk usage exceeds 65%**.
+- **Live Progress Bar & Thorough Pre/Post Cleanup**: Real-time visual progress bar with friendly kaomoji feedback, plus thorough environment cleanup before starting, after completion, and on `Ctrl+C` (`SIGINT`/`SIGTERM`/`EXIT` traps + `fstrim`).
 - **Comprehensive PT / Storage / Backup Coverage (9 Dimensions)**: Covers Disk Topology, `ioping` latency, FIO 14-item Direct I/O matrix, **Small-Block High-Concurrency I/O** (PT seeding / piece hashing / multi-stream backup / 4K burst), production `fsync`, 50%-capacity endurance + per-minute `iostat`, 10k-file metadata + SMART/Ext4 lifetime, **Global Connectivity & Bulk Download Throughput**, and **IP Quality, Platform Access & Empirical Access Denial Probability**.
 - **Pure Objective Metrics**: Zero subjective recommendations or tuning opinions — raw, reproducible numbers only.
 - **Interactive Module Selection**: Choose language at startup (`zh` / `en`), pre-flight path & dependency check (exits cleanly if installation is declined), and NodeQuality-style `[y/n]` module toggles (skipped sections are rendered as bold red **`???`**).

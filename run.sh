@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DiskQuality v1.0.3 — Bilingual PT / Storage / Backup VPS Objective Benchmark
+# DiskQuality v1.0.4 — Bilingual PT / Storage / Backup VPS Objective Benchmark
 # ==============================================================================
 set -euo pipefail
 
 SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
-SCRIPT_VERSION="v1.0.3"
-SCRIPT_UPDATED="2026.11.22"
+SCRIPT_VERSION="v1.0.4"
+SCRIPT_UPDATED="2026.11.23"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 CYAN='\033[1;36m'
@@ -26,6 +26,15 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
+
+WORK_DIR="${TARGET_DIR%/}/.diskquality_work"
+TMP_CORE="/tmp/diskquality_core_$$.py"
+
+cleanup_env() {
+    rm -f "$TMP_CORE" 2>/dev/null || true
+    rm -rf "$WORK_DIR" 2>/dev/null || true
+}
+trap cleanup_env EXIT INT TERM
 
 read_tty() {
     local prompt="$1"
@@ -54,7 +63,7 @@ if [[ -z "$LANG_CODE" ]]; then
     if [[ "$AUTO_YES" == "1" ]]; then
         LANG_CODE="zh"
     else
-        LANG_ANS=$(read_tty "Select Language / 选择语言 [1=简体中文 (默认), 2=English]: ")
+        LANG_ANS=$(read_tty "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Select Language / 选择语言 [1=简体中文 (默认), 2=English]: ")
         if [[ "$LANG_ANS" == "2" || "$LANG_ANS" =~ ^[Ee][Nn]$ ]]; then
             LANG_CODE="en"
         else
@@ -64,7 +73,7 @@ if [[ -z "$LANG_CODE" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral)${RESET}"
+    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral) ( •̀ ω •́ )✧${RESET}"
     echo -e "${GREEN}Version:${RESET} ${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}Command:${RESET} bash <(curl -sL ${SITE_URL})"
     echo ""
     echo -e "${CYAN}[Acknowledgments & Upstream Tools]${RESET}"
@@ -74,7 +83,7 @@ if [[ "$LANG_CODE" == "en" ]]; then
     echo "  · Cloudflare Speed (https://speed.cloudflare.com) | CacheFly (https://www.cachefly.com)"
     echo "  · Credits: NodeQuality (github.com/LloydAsp/NodeQuality) | HardwareQuality & IPQuality (github.com/xykt)"
 else
-    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）${RESET}"
+    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）( •̀ ω •́ )✧${RESET}"
     echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
     echo ""
     echo -e "${CYAN}【致谢与底层检测工具原站】${RESET}"
@@ -86,12 +95,40 @@ else
 fi
 echo ""
 
-# 2. Pre-flight Path & Dependency Check
+# 2. Pre-flight Path Check & Thorough Pre-Test Environment Cleanup
 if [[ ! -d "$TARGET_DIR" || ! -w "$TARGET_DIR" ]]; then
-    [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Error] Target directory not writable: ${TARGET_DIR}${RESET}" || echo -e "${RED}[错误] 目标测评路径不可访问或不可写：${TARGET_DIR}${RESET}"
+    [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Error] Target directory not writable: ${TARGET_DIR} (；′⌒\`)${RESET}" || echo -e "${RED}[错误] 目标测评路径不可访问或不可写：${TARGET_DIR} (；′⌒\`)${RESET}"
     exit 1
 fi
 
+if [[ "$LANG_CODE" == "en" ]]; then
+    echo -e "${CYAN}[Cleanup] Sweeping stale temporary files before benchmark... (ง •̀_•́)ง${RESET}"
+else
+    echo -e "${CYAN}[环境清理] 正在彻底清理测试前残留临时文件... (ง •̀_•́)ง${RESET}"
+fi
+rm -rf "$WORK_DIR" 2>/dev/null || true
+find /tmp -maxdepth 1 -name 'diskquality_core_*.py' ! -name "diskquality_core_$$.py" -delete 2>/dev/null || true
+sync 2>/dev/null || true
+
+# 3. Pre-Test Disk Usage Scan (Abort if > 65% used)
+USED_PCT=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { if ($2 > 0) printf "%.1f", ($3 * 100.0) / $2; else print "0.0" }')
+IS_OVER=$(awk -v u="$USED_PCT" 'BEGIN { print (u > 65.0) ? 1 : 0 }')
+if [[ "$IS_OVER" == "1" ]]; then
+    if [[ "$LANG_CODE" == "en" ]]; then
+        echo -e "${RED}[Abort] Disk usage is ${USED_PCT}% (> 65%). Insufficient disk space, benchmark automatically cancelled (；′⌒\`)${RESET}"
+    else
+        echo -e "${RED}[终止] 当前硬盘占用 ${USED_PCT}% (> 65%)，硬盘空间不足，已自动取消运行 (；′⌒\`)${RESET}"
+    fi
+    exit 1
+else
+    if [[ "$LANG_CODE" == "en" ]]; then
+        echo -e "${GREEN}[✔] Disk pre-scan passed (used ${USED_PCT}% ≤ 65%) (๑•̀ㅂ•́)و✧${RESET}"
+    else
+        echo -e "${GREEN}[✔] 硬盘空间预检通过（当前占用 ${USED_PCT}% ≤ 65%）(๑•̀ㅂ•́)و✧${RESET}"
+    fi
+fi
+
+# 4. Pre-flight Dependency Check
 MISSING_CMDS=()
 MISSING_PKGS=()
 check_dep() {
@@ -112,7 +149,7 @@ if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
         INSTALL_ANS=$( [[ "$AUTO_YES" == "1" ]] && echo "y" || read_tty "是否同意自动安装上述缺失依赖？(不同意将自动退出脚本) [y/N]：" )
     fi
     if [[ ! "$INSTALL_ANS" =~ ^[Yy]$ ]]; then
-        [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Exit] Installation declined. Exited safely.${RESET}" || echo -e "${RED}[退出] 用户未同意安装缺失依赖，脚本已安全退出。${RESET}"
+        [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Exit] Installation declined. Exited safely (´• ω •\`).${RESET}" || echo -e "${RED}[退出] 用户未同意安装缺失依赖，脚本已安全退出 (´• ω •\`).${RESET}"
         exit 1
     fi
     if command -v apt-get >/dev/null 2>&1; then
@@ -127,11 +164,11 @@ if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
         exit 1
     fi
 else
-    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[OK] Path & dependencies verified.${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过${RESET}"
+    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[✔] Path & dependencies verified ヾ(•ω•\`)o${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过 ヾ(•ω•\`)o${RESET}"
 fi
 echo ""
 
-# 3. Clean Interactive Module Selection (Default 'y')
+# 5. Clean Interactive Module Selection (Default 'y')
 ask_yn() {
     local prompt="$1"
     if [[ "$AUTO_YES" == "1" ]]; then
@@ -151,6 +188,7 @@ if [[ "$LANG_CODE" == "en" ]]; then
     RUN_NET=$(ask_yn "Run Global Connectivity & Bulk Download Throughput? [y/n]: ")
     RUN_IPQ=$(ask_yn "Run IP Quality, Platform Unlock & Denial Probability? [y/n]: ")
     RUN_META=$(ask_yn "Run Filesystem Metadata (10,000 files) & Lifetime Diagnostics? [y/n]: ")
+    echo -e "\n${CYAN}>>> All set! Launching DiskQuality benchmark engine... ٩(｡•́‿•̀｡)۶${RESET}"
 else
     RUN_IOPING=$(ask_yn "运行 底层延迟基线测试 (ioping)？（回车默认 'y'）[y/n]：")
     RUN_MATRIX=$(ask_yn "运行 FIO 14项合成性能矩阵测试？（回车默认 'y'）[y/n]：")
@@ -160,11 +198,9 @@ else
     RUN_NET=$(ask_yn "运行 国际互联延迟与大文件下载吞吐测试？（回车默认 'y'）[y/n]：")
     RUN_IPQ=$(ask_yn "运行 IP 质量、平台解锁与被拒绝访问概率评估？（回车默认 'y'）[y/n]：")
     RUN_META=$(ask_yn "运行 文件系统元数据 (10,000 小文件) 与通电寿命溯源？（回车默认 'y'）[y/n]：")
+    echo -e "\n${CYAN}>>> 选定完毕，正在启动 DiskQuality 测评引擎... ٩(｡•́‿•̀｡)۶${RESET}"
 fi
 
-echo ""
-TMP_CORE="/tmp/diskquality_core_$$.py"
-trap 'rm -f "$TMP_CORE"' EXIT
 curl -fsSL "${SITE_URL}/core.py" -o "$TMP_CORE"
 
 python3 "$TMP_CORE" \
