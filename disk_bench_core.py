@@ -190,12 +190,49 @@ def calc_adaptive_plan(target_dir="/", total_minutes=20.0):
     }
 
 
+_ACTIVE_PROCS = []
+
+
+def _kill_all_active_procs():
+    for p in list(_ACTIVE_PROCS):
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+        try:
+            p.wait(timeout=2)
+        except Exception:
+            pass
+    _ACTIVE_PROCS.clear()
+
+
 def run_cmd(cmd, timeout=120):
+    p = None
     try:
-        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
-        return p.returncode, p.stdout.strip(), p.stderr.strip()
+        p = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, start_new_session=True,
+        )
+        _ACTIVE_PROCS.append(p)
+        out, err = p.communicate(timeout=timeout)
+        return p.returncode, (out or "").strip(), (err or "").strip()
+    except subprocess.TimeoutExpired:
+        if p is not None:
+            try: os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+            except Exception:
+                try: p.kill()
+                except Exception: pass
+            try: p.communicate(timeout=2)
+            except Exception: pass
+        return -1, "", "timeout"
     except Exception as e:
         return -1, "", str(e)
+    finally:
+        if p is not None and p in _ACTIVE_PROCS:
+            _ACTIVE_PROCS.remove(p)
 
 
 def collect_system_topology(target_dir="/"):
@@ -694,12 +731,28 @@ def render_standard_md(data, lang=None, site_url=None):
 
 
 def thorough_cleanup(work_dir, target_dir="/", do_trim=False):
-    """Thoroughly remove all temporary benchmark directories/files and optionally TRIM."""
-    if os.path.exists(work_dir):
+    """Thoroughly terminate any lingering workers, remove all temporary files/dirs, and optionally TRIM."""
+    _kill_all_active_procs()
+    try:
+        subprocess.run(f"pkill -9 -f '{work_dir}' 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    except Exception:
+        pass
+    for _ in range(3):
+        if not os.path.exists(work_dir):
+            break
         shutil.rmtree(work_dir, ignore_errors=True)
-    run_cmd("sync 2>/dev/null || true")
-    if do_trim:
-        run_cmd(f"fstrim '{target_dir}' 2>/dev/null || true")
+        if os.path.exists(work_dir):
+            try:
+                subprocess.run(f"rm -rf '{work_dir}' 2>/dev/null || true", shell=True, timeout=10)
+            except Exception:
+                pass
+            time.sleep(0.2)
+    try:
+        subprocess.run("sync 2>/dev/null || true", shell=True, timeout=10)
+        if do_trim:
+            subprocess.run(f"fstrim '{target_dir}' 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    except Exception:
+        pass
 
 
 def run_benchmark_cli(args):
@@ -712,22 +765,23 @@ def run_benchmark_cli(args):
 
     # 1. Thorough pre-test cleanup & signal/exit trap (ensures zero leftover files even on Ctrl+C)
     thorough_cleanup(work_dir, args.target, do_trim=False)
-    active_procs = []
+    cleaned_flag = {"done": False}
 
-    def _emergency_cleanup(*_a):
-        for p in list(active_procs):
-            try:
-                p.terminate()
-                p.wait(timeout=2)
-            except Exception:
-                try: p.kill()
-                except Exception: pass
-        thorough_cleanup(work_dir, args.target, do_trim=False)
+    def _emergency_cleanup(from_signal=False):
+        if cleaned_flag["done"]:
+            return
+        cleaned_flag["done"] = True
+        thorough_cleanup(work_dir, args.target, do_trim=from_signal)
+        if from_signal:
+            if lang == "en":
+                print(f"\n{C_YEL}[Abort Cleanup] Interrupted — terminated all benchmark workers & thoroughly removed {work_dir} (´• ω •`){C_RST}", flush=True)
+            else:
+                print(f"\n{C_YEL}[中断清理] 检测到临时退出，已终止全部压测进程并彻底清理 {work_dir} 与积累文件 (´• ω •`){C_RST}", flush=True)
 
-    atexit.register(_emergency_cleanup)
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    atexit.register(_emergency_cleanup, False)
+    for sig in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGHUP", signal.SIGTERM)):
         try:
-            signal.signal(sig, lambda s, f: (_emergency_cleanup(), sys.exit(130)))
+            signal.signal(sig, lambda s, f: (_emergency_cleanup(True), os._exit(130)))
         except Exception:
             pass
 
@@ -843,8 +897,8 @@ def run_benchmark_cli(args):
         mix_m = round(plan["sustained_mix_sec"] / 60.0, 1)
         iostat_log = os.path.join(work_dir, "iostat_raw.log")
         dev_short = os.path.basename(topo["base_dev"])
-        io_proc = subprocess.Popen(f"iostat -dxm {dev_short} 5 > '{iostat_log}' 2>&1", shell=True)
-        active_procs.append(io_proc)
+        io_proc = subprocess.Popen(f"iostat -dxm {dev_short} 5 > '{iostat_log}' 2>&1", shell=True, start_new_session=True)
+        _ACTIVE_PROCS.append(io_proc)
         try:
             show_bar(
                 f"50% 容量持久压测 阶段 A 顺序写 ({plan['stress_file_gb']} GB, {seq_m} 分钟)...",
@@ -856,10 +910,13 @@ def run_benchmark_cli(args):
             ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], 1, 30)
             show_bar("50% 容量持久压测 阶段 B 完成", "50% Endurance Phase B completed", advance=1)
         finally:
-            io_proc.terminate()
-            try: io_proc.wait(timeout=5)
-            except Exception: io_proc.kill()
-            if io_proc in active_procs: active_procs.remove(io_proc)
+            try: os.killpg(os.getpgid(io_proc.pid), signal.SIGKILL)
+            except Exception:
+                try: io_proc.kill()
+                except Exception: pass
+            try: io_proc.wait(timeout=3)
+            except Exception: pass
+            if io_proc in _ACTIVE_PROCS: _ACTIVE_PROCS.remove(io_proc)
             try: os.remove(sfile)
             except Exception: pass
         sustained_res = {"seq_write": sw, "rand_mixed": ms, "timeline": parse_iostat_minutes(iostat_log, dev_short, plan["sustained_seq_sec"] // 60)}

@@ -31,10 +31,21 @@ WORK_DIR="${TARGET_DIR%/}/.diskquality_work"
 TMP_CORE="/tmp/diskquality_core_$$.py"
 
 cleanup_env() {
+    local code=$?
+    pkill -9 -f "$WORK_DIR" 2>/dev/null || true
     rm -f "$TMP_CORE" 2>/dev/null || true
     rm -rf "$WORK_DIR" 2>/dev/null || true
+    sync 2>/dev/null || true
+    if [[ $code -eq 130 || $code -eq 143 ]]; then
+        if [[ "${LANG_CODE:-zh}" == "en" ]]; then
+            echo -e "\n${YELLOW}[Abort Cleanup] Cleaned up ${WORK_DIR} and temporary scripts safely (´• ω •\`)${RESET}" >&2
+        else
+            echo -e "\n${YELLOW}[中断清理] 已彻底清理临时路径 ${WORK_DIR} 与积累脚本文件 (´• ω •\`)${RESET}" >&2
+        fi
+    fi
 }
-trap cleanup_env EXIT INT TERM
+trap cleanup_env EXIT
+trap 'cleanup_env; exit 130' INT TERM HUP
 
 read_tty() {
     local prompt="$1"
