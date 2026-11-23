@@ -32,7 +32,7 @@ bash <(curl -sL https://test.sakurado.top)
 
 ---
 
-## 测评维度（v1.0.3）
+## 测评维度
 
 1. **系统与块设备拓扑**：虚拟化、操作系统与内核、CPU/内存/Swap、磁盘型号、容量、`ROTA`、I/O 调度器、`write_cache`、`read_ahead_kb`、扇区规格、TRIM/Discard 支持。
 2. **底层延迟基线（`ioping`）**：Direct I/O 原生随机寻道、Page Cache 缓存读、`fsync` 持久化同步写（`min / avg / max / mdev`）。
