@@ -15,15 +15,18 @@ import json
 import html
 import secrets
 import threading
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DQ_DATA_DIR", "/tmp/diskquality_ephemeral")
+STATS_FILE = os.environ.get("DQ_STATS_FILE", os.path.join(APP_DIR, "run_stats.json"))
 SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 PORT = int(os.environ.get("DQ_PORT", "8765"))
 TTL_SECONDS = int(os.environ.get("DQ_TTL_SECONDS", "3600"))
 MAX_REPORTS = 200
 MAX_BODY_BYTES = 256 * 1024
+TAIPEI_TZ = timezone(timedelta(hours=8))
 
 os.makedirs(DATA_DIR, exist_ok=True)
 sys.path.insert(0, APP_DIR)
@@ -31,6 +34,47 @@ import disk_bench_core as core
 
 _RATE_LOCK = threading.Lock()
 _RATE_MAP = {}
+_STATS_LOCK = threading.Lock()
+
+
+def get_or_hit_stats(hit=False):
+    now_tpe = datetime.now(TAIPEI_TZ)
+    today_str = now_tpe.strftime("%Y-%m-%d")
+    time_str = now_tpe.strftime("%Y-%m-%d %H:%M:%S")
+    with _STATS_LOCK:
+        st = {"total": 0, "today_date": today_str, "today": 0}
+        target_file = STATS_FILE
+        for cand in (STATS_FILE, "/tmp/diskquality_run_stats.json"):
+            if os.path.exists(cand):
+                try:
+                    with open(cand, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                    st["total"] = int(d.get("total", 0))
+                    st["today_date"] = str(d.get("today_date", today_str))
+                    st["today"] = int(d.get("today", 0))
+                    target_file = cand
+                    break
+                except Exception:
+                    pass
+        if st["today_date"] != today_str:
+            st["today_date"] = today_str
+            st["today"] = 0
+        if hit:
+            st["total"] += 1
+            st["today"] += 1
+            for cand in (target_file, "/tmp/diskquality_run_stats.json"):
+                try:
+                    with open(cand, "w", encoding="utf-8") as f:
+                        json.dump(st, f)
+                    break
+                except OSError:
+                    continue
+        return {
+            "taipei_time": time_str,
+            "today_date": st["today_date"],
+            "total_runs": st["total"],
+            "today_runs": st["today"],
+        }
 
 with open(os.path.join(APP_DIR, "run.sh"), "rb") as _f:
     RUN_SH_BYTES = _f.read().replace(b"https://your-domain.example", SITE_URL.encode("utf-8"))
@@ -80,6 +124,7 @@ def load_valid_report(rid):
 
 
 def render_home_html():
+    st = get_or_hit_stats(hit=False)
     credits_html = "".join(
         f'<li><a href="{u}" target="_blank" rel="noopener">{html.escape(n)}</a> — <span>{html.escape(u)}</span></li>'
         for n, u in core.TOOL_CREDITS
@@ -89,7 +134,9 @@ def render_home_html():
 <title>DiskQuality {core.VERSION}</title>
 <style>
   *{{box-sizing:border-box}} body{{margin:0;padding:38px 20px;background:#0a0d12;color:#f1f5f9;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.65}}
-  .wrap{{max-width:960px;margin:0 auto}} .brand{{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:28px}}
+  .wrap{{max-width:960px;margin:0 auto}} .brand{{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px}}
+  .stats{{text-align:center;font-size:14px;color:#94a3b8;font-family:"JetBrains Mono",Consolas,monospace;margin-bottom:24px}}
+  .stats b{{color:#4ade80}}
   .bar{{width:4px;height:36px;background:#22c55e;border-radius:2px}} .title{{font-size:34px;font-weight:700;color:#fff}}
   .ver{{font-size:13px;color:#4ade80;background:#14532d66;border:1px solid #22c55e77;padding:4px 12px;border-radius:999px;font-family:monospace}}
   .cmd{{background:#151b26;border:1px solid #2b3548;border-radius:12px;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}}
@@ -101,6 +148,7 @@ def render_home_html():
   .panel h3{{margin:0 0 12px 0;font-size:17px;color:#38bdf8}} .panel li{{margin:7px 0;font-size:14.5px;color:#cbd5e1}} .panel a{{color:#4ade80;text-decoration:none;font-weight:600}}
 </style></head><body><div class="wrap">
   <div class="brand"><div class="bar"></div><div class="title">DiskQuality</div><span class="ver">{core.VERSION}</span></div>
+  <div class="stats">Taipei Time: <b>{st['taipei_time']}</b> &nbsp;|&nbsp; 累计运行 / Total Runs: <b>{st['total_runs']}</b> &nbsp;|&nbsp; 今日运行 / Today Runs: <b>{st['today_runs']}</b></div>
   <div class="cmd"><div class="code"><span class="prompt">&gt;</span>bash &lt;(curl -sL {SITE_URL})</div><button class="btn" id="cpBtn" onclick="copyCmd()">Copy / 复制命令</button></div>
   <div class="notice">⚠️ <strong>Zero Persistence / 零持久化声明</strong>: Ephemeral query only — all reports &amp; images are permanently destroyed after <strong>1 hour</strong>. 仅提供测试与 1 小时临时查询，到期自动销毁。</div>
   <div class="panel"><h3>Acknowledgments &amp; Upstream Tools / 致谢与原站</h3><ul>{credits_html}</ul></div>
@@ -236,7 +284,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, RUN_SH_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
         if path == "/run.sh": return self._send(200, RUN_SH_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
         if path == "/core.py": return self._send(200, CORE_PY_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
-        if path == "/": return self._send(200, HOME_HTML_BYTES, "text/html; charset=utf-8", cache="public, max-age=300")
+        if path == "/api/v1/stats":
+            hit = "hit=1" in self.path
+            return self._send(200, json.dumps(get_or_hit_stats(hit=hit)), "application/json", cache="no-store")
+        if path == "/": return self._send(200, render_home_html(), "text/html; charset=utf-8", cache="no-store")
 
         m_svg = re.match(r"^/r/([A-Za-z0-9_-]+)\.svg$", path)
         if m_svg:

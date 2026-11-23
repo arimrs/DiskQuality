@@ -75,6 +75,27 @@ fi
 if [[ "$LANG_CODE" == "en" ]]; then
     echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral) ( •̀ ω •́ )✧${RESET}"
     echo -e "${GREEN}Version:${RESET} ${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}Command:${RESET} bash <(curl -sL ${SITE_URL})"
+else
+    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）( •̀ ω •́ )✧${RESET}"
+    echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
+fi
+
+# Live Taipei Time & Run Counter (Total / Today)
+TPE_TIME=$(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -u '+%Y-%m-%d %H:%M:%S')
+TOTAL_RUNS="—"
+TODAY_RUNS="—"
+STATS_JSON=$(curl -fsSLm 3 "${SITE_URL}/api/v1/stats?hit=1" 2>/dev/null || true)
+if [[ -n "$STATS_JSON" ]]; then
+    _t=$(printf '%s' "$STATS_JSON" | sed -n 's/.*"taipei_time"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    _tot=$(printf '%s' "$STATS_JSON" | sed -n 's/.*"total_runs"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p')
+    _tod=$(printf '%s' "$STATS_JSON" | sed -n 's/.*"today_runs"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p')
+    [[ -n "$_t" ]] && TPE_TIME="$_t"
+    [[ -n "$_tot" ]] && TOTAL_RUNS="$_tot"
+    [[ -n "$_tod" ]] && TODAY_RUNS="$_tod"
+fi
+
+if [[ "$LANG_CODE" == "en" ]]; then
+    echo -e "${GREEN}Run Time (Taipei Time):${RESET} ${TPE_TIME}  |  ${GREEN}Total Runs:${RESET} ${TOTAL_RUNS}  |  ${GREEN}Today Runs:${RESET} ${TODAY_RUNS}"
     echo ""
     echo -e "${CYAN}[Acknowledgments & Upstream Tools]${RESET}"
     echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping)"
@@ -83,8 +104,7 @@ if [[ "$LANG_CODE" == "en" ]]; then
     echo "  · Cloudflare Speed (https://speed.cloudflare.com) | CacheFly (https://www.cachefly.com)"
     echo "  · Credits: NodeQuality (github.com/LloydAsp/NodeQuality) | HardwareQuality & IPQuality (github.com/xykt)"
 else
-    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）( •̀ ω •́ )✧${RESET}"
-    echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
+    echo -e "${GREEN}运行时间 (Taipei Time)：${RESET}${TPE_TIME}  |  ${GREEN}累计运行：${RESET}${TOTAL_RUNS} 次  |  ${GREEN}今日运行：${RESET}${TODAY_RUNS} 次"
     echo ""
     echo -e "${CYAN}【致谢与底层检测工具原站】${RESET}"
     echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping)"

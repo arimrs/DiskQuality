@@ -707,8 +707,8 @@ def run_benchmark_cli(args):
     L = I18N[lang]
     work_dir = os.path.join(args.target.rstrip("/") or "/", ".diskquality_work")
     t_start = time.time()
-    tz = timezone(timedelta(hours=8)) if lang == "zh" else timezone.utc
-    start_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S " + ("CST" if lang == "zh" else "UTC"))
+    tz = timezone(timedelta(hours=8))
+    start_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S (Taipei Time)")
 
     # 1. Thorough pre-test cleanup & signal/exit trap (ensures zero leftover files even on Ctrl+C)
     thorough_cleanup(work_dir, args.target, do_trim=False)
