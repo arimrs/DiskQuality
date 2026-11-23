@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DiskQuality v1.0.4 — Bilingual PT / Storage / Backup VPS Objective Benchmark
+# DiskQuality v1.0.5 — Bilingual PT / Storage / Backup VPS Objective Benchmark
 # ==============================================================================
 set -euo pipefail
 
 SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
-SCRIPT_VERSION="v1.0.4"
+SCRIPT_VERSION="v1.0.5"
 SCRIPT_UPDATED="2026.11.23"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
@@ -208,7 +208,23 @@ else
 fi
 echo ""
 
-# 5. Clean Interactive Module Selection (Default 'y')
+# 5. Disk-Aware Time Estimation & 4 Merged Interactive Module Groups (Default 'y')
+DISK_TOTAL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $2 / 1048576.0 }')
+DISK_AVAIL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $4 / 1048576.0 }')
+STRESS_EST_GB=$(awk -v t="$DISK_TOTAL_GB" -v a="$DISK_AVAIL_GB" 'BEGIN { r=t*0.5; c=a*0.8; g=(r<c?r:c); if(g<1) g=1; printf "%.1f", g }')
+DEV_SRC=$(findmnt -n -o SOURCE "$TARGET_DIR" 2>/dev/null || true)
+BASE_DEV=$(lsblk -no PKNAME "$DEV_SRC" 2>/dev/null | head -n1 || true)
+[[ -z "$BASE_DEV" && -n "$DEV_SRC" ]] && BASE_DEV=$(basename "$DEV_SRC" | sed 's/[0-9]*$//')
+ROTA_VAL=$(cat "/sys/block/${BASE_DEV}/queue/rotational" 2>/dev/null || echo "0")
+if [[ "$ROTA_VAL" == "1" ]]; then
+    MEDIA_ZH="HDD/机械盘"; MEDIA_EN="HDD"
+    EST_CORE_MIN=5; EST_META_MIN=1
+else
+    MEDIA_ZH="SSD/NVMe"; MEDIA_EN="SSD/NVMe"
+    EST_CORE_MIN=3; EST_META_MIN=0
+fi
+EST_SUST_MIN=$(awk -v m="$MINUTES" 'BEGIN { s=int(m*0.75); if(s<2) s=2; print s }')
+
 ask_yn() {
     local prompt="$1"
     if [[ "$AUTO_YES" == "1" ]]; then
@@ -220,25 +236,29 @@ ask_yn() {
 }
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    RUN_IOPING=$(ask_yn "Run Latency Baseline (ioping)? [y/n]: ")
-    RUN_MATRIX=$(ask_yn "Run FIO 14-Item Synthetic Matrix (Direct I/O)? [y/n]: ")
-    RUN_PROD=$(ask_yn "Run Production Workloads & fsync Commit? [y/n]: ")
-    RUN_CONC=$(ask_yn "Run Small-Block High-Concurrency I/O (PT Seed / Hash / Backup)? [y/n]: ")
-    RUN_SUSTAINED=$(ask_yn "Run 50% Adaptive Capacity Endurance + iostat (20-min budget)? [y/n]: ")
-    RUN_NET=$(ask_yn "Run Global Connectivity & Bulk Download Throughput? [y/n]: ")
-    RUN_IPQ=$(ask_yn "Run IP Quality, Platform Unlock & Denial Probability? [y/n]: ")
-    RUN_META=$(ask_yn "Run Filesystem Metadata (10,000 files) & Lifetime Diagnostics? [y/n]: ")
-    echo -e "\n${CYAN}>>> All set! Launching DiskQuality benchmark engine...${RESET}"
+    echo -e "${CYAN}[Disk Profile] Capacity ${DISK_TOTAL_GB} GB (${MEDIA_EN}) · 50% Stress File ≈ ${STRESS_EST_GB} GB${RESET}"
+    RUN_CORE=$(ask_yn "1/4 Run Disk Performance Suite (ioping + FIO 14-item + fsync + PT/Backup Concurrency, ~${EST_CORE_MIN}m)? [y/n]: ")
+    RUN_SUSTAINED=$(ask_yn "2/4 Run 50% Adaptive Capacity Endurance (${STRESS_EST_GB} GB) + iostat (~${EST_SUST_MIN}m)? [y/n]: ")
+    RUN_NETIP=$(ask_yn "3/4 Run Global Connectivity, Bulk Download & IP Quality / Denial Risk (~0.5m)? [y/n]: ")
+    RUN_META=$(ask_yn "4/4 Run Filesystem Metadata (10,000 files) & SMART / Ext4 Lifetime (~0.3m)? [y/n]: ")
 else
-    RUN_IOPING=$(ask_yn "运行 底层延迟基线测试 (ioping)？（回车默认 'y'）[y/n]：")
-    RUN_MATRIX=$(ask_yn "运行 FIO 14项合成性能矩阵测试？（回车默认 'y'）[y/n]：")
-    RUN_PROD=$(ask_yn "运行 生产模型与 fsync 事务刷盘测试？（回车默认 'y'）[y/n]：")
-    RUN_CONC=$(ask_yn "运行 小量多并发 I/O 压测 (PT 做种/校验/并发备份)？（回车默认 'y'）[y/n]：")
-    RUN_SUSTAINED=$(ask_yn "运行 50% 容量自适应持久压测 + iostat 时序 (20分钟预算)？（回车默认 'y'）[y/n]：")
-    RUN_NET=$(ask_yn "运行 国际互联延迟与大文件下载吞吐测试？（回车默认 'y'）[y/n]：")
-    RUN_IPQ=$(ask_yn "运行 IP 质量、平台解锁与被拒绝访问概率评估？（回车默认 'y'）[y/n]：")
-    RUN_META=$(ask_yn "运行 文件系统元数据 (10,000 小文件) 与通电寿命溯源？（回车默认 'y'）[y/n]：")
-    echo -e "\n${CYAN}>>> 选定完毕，正在启动 DiskQuality 测评引擎...${RESET}"
+    echo -e "${CYAN}[硬盘画像] 容量 ${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 50% 自适应压测文件 ≈ ${STRESS_EST_GB} GB${RESET}"
+    RUN_CORE=$(ask_yn "1/4 运行 综合硬盘性能组（ioping 延迟 + FIO 14项 + 生产 fsync + PT/备份多并发，约 ${EST_CORE_MIN} 分钟）[y/n]：")
+    RUN_SUSTAINED=$(ask_yn "2/4 运行 50% 容量自适应持久压测（${STRESS_EST_GB} GB）+ 逐分钟 iostat（约 ${EST_SUST_MIN} 分钟）[y/n]：")
+    RUN_NETIP=$(ask_yn "3/4 运行 国际互联延迟、大文件下行与 IP 质量 / 被拒访问概率（约 30 秒）[y/n]：")
+    RUN_META=$(ask_yn "4/4 运行 文件系统元数据（10,000 小文件）与 SMART / Ext4 通电寿命（约 20 秒）[y/n]：")
+fi
+
+RUN_IOPING="$RUN_CORE"; RUN_MATRIX="$RUN_CORE"; RUN_PROD="$RUN_CORE"; RUN_CONC="$RUN_CORE"
+RUN_NET="$RUN_NETIP"; RUN_IPQ="$RUN_NETIP"
+
+EST_LOW=$(awk -v c="$RUN_CORE" -v cm="$EST_CORE_MIN" -v s="$RUN_SUSTAINED" -v sm="$EST_SUST_MIN" -v n="$RUN_NETIP" -v m="$RUN_META" -v mm="$EST_META_MIN" 'BEGIN { t=0.2; if(c=="y") t+=cm; if(s=="y") t+=sm; if(n=="y") t+=0.5; if(m=="y") t+=(mm>0?mm:0.3); printf "%.1f", t }')
+EST_HIGH=$(awk -v lo="$EST_LOW" -v r="$ROTA_VAL" 'BEGIN { f=(r=="1"?1.35:1.2); hi=lo*f; if(hi<lo+0.5) hi=lo+0.5; printf "%.1f", hi }')
+
+if [[ "$LANG_CODE" == "en" ]]; then
+    echo -e "\n${CYAN}>>> Estimated Total Runtime: ~${EST_LOW}–${EST_HIGH} min (${DISK_TOTAL_GB} GB ${MEDIA_EN}). Launching engine...${RESET}"
+else
+    echo -e "\n${CYAN}>>> 预计总执行时间：约 ${EST_LOW}–${EST_HIGH} 分钟（基于 ${DISK_TOTAL_GB} GB ${MEDIA_ZH} 估算），正在启动测评引擎...${RESET}"
 fi
 
 curl -fsSL "${SITE_URL}/core.py" -o "$TMP_CORE"

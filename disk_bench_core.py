@@ -18,6 +18,7 @@ import time
 import random
 import signal
 import atexit
+import shlex
 import socket
 import shutil
 import argparse
@@ -25,7 +26,7 @@ import subprocess
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.4 (2026.11.23)"
+VERSION = "v1.0.5 (2026.11.23)"
 DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
@@ -237,7 +238,6 @@ def run_cmd(cmd, timeout=120):
 
 
 def collect_system_topology(target_dir="/"):
-    _, host, _ = run_cmd("hostname")
     _, virt, _ = run_cmd("systemd-detect-virt 2>/dev/null || echo unknown")
     _, os_rel, _ = run_cmd("grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '\"'")
     _, kernel, _ = run_cmd("uname -r")
@@ -257,9 +257,10 @@ def collect_system_topology(target_dir="/"):
     else:
         masked_ip = "Unknown"
 
-    _, dev_src, _ = run_cmd(f"findmnt -n -o SOURCE '{target_dir}'")
-    _, fs_type, _ = run_cmd(f"findmnt -n -o FSTYPE '{target_dir}'")
-    _, base_dev, _ = run_cmd(f"lsblk -no PKNAME '{dev_src}' 2>/dev/null | head -n1")
+    q_target = shlex.quote(target_dir)
+    _, dev_src, _ = run_cmd(f"findmnt -n -o SOURCE {q_target}")
+    _, fs_type, _ = run_cmd(f"findmnt -n -o FSTYPE {q_target}")
+    _, base_dev, _ = run_cmd(f"lsblk -no PKNAME {shlex.quote(dev_src)} 2>/dev/null | head -n1")
     if not base_dev: base_dev = os.path.basename(dev_src).rstrip("0123456789")
     sb = f"/sys/block/{base_dev}"
     _, model, _ = run_cmd(f"cat {sb}/device/model 2>/dev/null || echo 'Virtual Disk'")
@@ -283,13 +284,13 @@ def collect_system_topology(target_dir="/"):
 
 
 def collect_poweron_lifetime(mount_dev, base_dev):
-    _, smart_out, _ = run_cmd(f"smartctl -a '{base_dev}' 2>&1 | head -n 30")
+    _, smart_out, _ = run_cmd(f"smartctl -a {shlex.quote(base_dev)} 2>&1 | head -n 30")
     smart_avail = "Unavailable" not in smart_out and "failed" not in smart_out.lower() and bool(smart_out)
     poh = None
     if smart_avail:
         m = re.search(r'Power_On_Hours.*?(\d+)\s*$', smart_out, re.M)
         if m: poh = m.group(1)
-    _, t2fs, _ = run_cmd(f"tune2fs -l '{mount_dev}' 2>/dev/null")
+    _, t2fs, _ = run_cmd(f"tune2fs -l {shlex.quote(mount_dev)} 2>/dev/null")
     cr = re.search(r'Filesystem created:\s*(.+)', t2fs)
     mc = re.search(r'Mount count:\s*(\d+)', t2fs)
     lw = re.search(r'Lifetime writes:\s*(.+)', t2fs)
@@ -304,8 +305,9 @@ def collect_poweron_lifetime(mount_dev, base_dev):
 
 def run_ioping_tests(work_dir):
     res = {}
+    q_dir = shlex.quote(work_dir)
     for key, flags in [("direct_seek", "-D -c 20 -i 0.05"), ("cached_read", "-C -c 20 -i 0.05"), ("sync_write", "-D -S -W -c 20 -i 0.05")]:
-        _, out, _ = run_cmd(f"ioping {flags} '{work_dir}' 2>&1", timeout=60)
+        _, out, _ = run_cmd(f"ioping {flags} {q_dir} 2>&1", timeout=60)
         m = re.search(r'min/avg/max/mdev\s*=\s*([^\n]+)', out)
         res[key] = m.group(1).strip() if m else "N/A"
     return res
@@ -313,7 +315,7 @@ def run_ioping_tests(work_dir):
 
 def run_fio_job(name, filepath, size_gb, rw, bs, iodepth, numjobs, runtime, direct=1, rwmixread=None, fsync=None):
     cmd = (
-        f"fio --name={name} --filename='{filepath}' --size={int(size_gb * 1024)}M "
+        f"fio --name={shlex.quote(name)} --filename={shlex.quote(filepath)} --size={int(size_gb * 1024)}M "
         f"--ioengine=libaio --direct={direct} --rw={rw} --bs={bs} "
         f"--iodepth={iodepth} --numjobs={numjobs} --runtime={runtime} --time_based "
         f"--group_reporting --output-format=json"
@@ -734,8 +736,10 @@ def render_standard_md(data, lang=None, site_url=None):
 def thorough_cleanup(work_dir, target_dir="/", do_trim=False):
     """Thoroughly terminate any lingering workers, remove all temporary files/dirs, and optionally TRIM."""
     _kill_all_active_procs()
+    q_work = shlex.quote(work_dir)
+    q_target = shlex.quote(target_dir)
     try:
-        subprocess.run(f"pkill -9 -f '{work_dir}' 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        subprocess.run(f"pkill -9 -f {q_work} 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
     except Exception:
         pass
     for _ in range(3):
@@ -744,14 +748,14 @@ def thorough_cleanup(work_dir, target_dir="/", do_trim=False):
         shutil.rmtree(work_dir, ignore_errors=True)
         if os.path.exists(work_dir):
             try:
-                subprocess.run(f"rm -rf '{work_dir}' 2>/dev/null || true", shell=True, timeout=10)
+                subprocess.run(f"rm -rf {q_work} 2>/dev/null || true", shell=True, timeout=10)
             except Exception:
                 pass
             time.sleep(0.2)
     try:
         subprocess.run("sync 2>/dev/null || true", shell=True, timeout=10)
         if do_trim:
-            subprocess.run(f"fstrim '{target_dir}' 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            subprocess.run(f"fstrim {q_target} 2>/dev/null || true", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
     except Exception:
         pass
 
@@ -901,7 +905,7 @@ def run_benchmark_cli(args):
         mix_m = round(plan["sustained_mix_sec"] / 60.0, 1)
         iostat_log = os.path.join(work_dir, "iostat_raw.log")
         dev_short = os.path.basename(topo["base_dev"])
-        io_proc = subprocess.Popen(f"iostat -dxm {dev_short} 5 > '{iostat_log}' 2>&1", shell=True, start_new_session=True)
+        io_proc = subprocess.Popen(f"iostat -dxm {shlex.quote(dev_short)} 5 > {shlex.quote(iostat_log)} 2>&1", shell=True, start_new_session=True)
         _ACTIVE_PROCS.append(io_proc)
         try:
             show_bar(
@@ -961,7 +965,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.4"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.5"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))

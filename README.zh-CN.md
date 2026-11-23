@@ -2,7 +2,7 @@
 
 # DiskQuality
 
-[![Version](https://img.shields.io/badge/version-v1.0.4-22c55e.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.5-22c55e.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 超轻量、中英双语（**简体中文 / English**）、纯客观数据的 Linux VPS 深度测评套件，专为 **PT 刷流机、大盘存储机与备份服务器** 打造，并配套零持久化可翻页临时在线查询服务端。

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.4 — Paginated Ephemeral Web & API Server (Bilingual zh/en)
+DiskQuality v1.0.5 — Hardened Paginated Ephemeral Web & API Server (Bilingual zh/en)
 - Paginated report viewer (6 interactive pages + Prev/Next + Arrow-Key navigation)
-- Enhanced typography & high-contrast dark theme
+- Hardened against Stored XSS, search-engine indexing, referrer leakage, and unmasked IP storage
 - Zero persistence (/tmp storage, strict 1h TTL auto-destroy, 410 Gone after expiry)
 """
 
@@ -34,7 +34,43 @@ import disk_bench_core as core
 
 _RATE_LOCK = threading.Lock()
 _RATE_MAP = {}
+_STATS_RATE_MAP = {}
 _STATS_LOCK = threading.Lock()
+
+
+def safe_json_for_script(obj):
+    """Prevent </script> breakout / Stored XSS when embedding JSON inside <script>."""
+    return (
+        json.dumps(obj, ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def _mask_ip_str(val):
+    s = str(val or "").strip()
+    if re.match(r"^\d+\.\d+\.\d+\.\d+$", s):
+        return re.sub(r"^(\d+\.\d+)\.\d+\.\d+$", r"\1.*.*", s)
+    if ":" in s and not s.endswith(":*:*"):
+        return re.sub(r"^([0-9a-fA-F]*:[0-9a-fA-F]*):.*$", r"\1:*:*", s)
+    return s or "Unknown"
+
+
+def sanitize_report_payload(data):
+    """Enforce server-side privacy sanitization so no hostname or unmasked IP is ever stored/served."""
+    if not isinstance(data, dict):
+        return None
+    topo = data.get("topology")
+    if not isinstance(topo, dict):
+        return None
+    for k in ("hostname", "ip", "real_ip", "public_ip", "client_ip"):
+        data.pop(k, None)
+        topo.pop(k, None)
+    topo["masked_ip"] = _mask_ip_str(topo.get("masked_ip", "Unknown"))
+    if "version" in data:
+        data["version"] = str(data["version"])[:64]
+    return data
 
 
 def get_or_hit_stats(hit=False):
@@ -195,6 +231,8 @@ def render_report_html(rid, data, rem_sec):
 
     return f"""<!DOCTYPE html>
 <html lang="{lang}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
 <title>DiskQuality — {html.escape(data['topology']['masked_ip'])}</title>
 <style>
   *{{box-sizing:border-box}} body{{margin:0;padding:28px 18px 54px;background:#0a0d12;color:#f1f5f9;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.6}}
@@ -237,7 +275,7 @@ def render_report_html(rid, data, rem_sec):
   <div class="toast" id="toast"></div>
   <div class="card">{pages_html}</div>
 </div><script>
-const P={{txt:{json.dumps(plain_txt,ensure_ascii=False)},ns:{json.dumps(ns_md,ensure_ascii=False)},md:{json.dumps(std_md,ensure_ascii=False)},svgs:{json.dumps(page_svgs,ensure_ascii=False)}}};
+const P={{txt:{safe_json_for_script(plain_txt)},ns:{safe_json_for_script(ns_md)},md:{safe_json_for_script(std_md)},svgs:{safe_json_for_script(page_svgs)}}};
 let cur=0, total={len(page_keys)};
 function goPage(i){{
   cur=(i+total)%total;
@@ -266,12 +304,23 @@ EXPIRED_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>410 Go
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
 
-    def _send(self, code, body, ctype="text/html; charset=utf-8", cache="no-store"):
+    def _send(self, code, body, ctype="text/html; charset=utf-8", cache="no-store", extra_headers=None):
         b = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", cache)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if ctype.startswith("text/html"):
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src blob: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            )
+        if extra_headers:
+            for hk, hv in extra_headers.items():
+                self.send_header(hk, hv)
         self.end_headers()
         if self.command != "HEAD": self.wfile.write(b)
 
@@ -280,29 +329,42 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         ua = (self.headers.get("User-Agent") or "").lower()
+        if path == "/robots.txt":
+            return self._send(200, "User-agent: *\nDisallow: /r/\nDisallow: /api/\n", "text/plain; charset=utf-8", cache="public, max-age=3600")
         if path == "/" and ("curl" in ua or "wget" in ua or "raw=1" in self.path):
             return self._send(200, RUN_SH_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
         if path == "/run.sh": return self._send(200, RUN_SH_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
         if path == "/core.py": return self._send(200, CORE_PY_BYTES, "text/plain; charset=utf-8", cache="public, max-age=300")
         if path == "/api/v1/stats":
             hit = "hit=1" in self.path
+            if hit:
+                ip = (self.headers.get("X-Real-IP") or self.client_address[0] or "unknown").split(",")[0].strip()
+                now = time.time()
+                with _RATE_LOCK:
+                    hist = [t for t in _STATS_RATE_MAP.get(ip, []) if now - t < 60]
+                    if len(hist) >= 10:
+                        hit = False
+                    else:
+                        hist.append(now)
+                        _STATS_RATE_MAP[ip] = hist
             return self._send(200, json.dumps(get_or_hit_stats(hit=hit)), "application/json", cache="no-store")
         if path == "/": return self._send(200, render_home_html(), "text/html; charset=utf-8", cache="no-store")
 
+        priv_hdrs = {"X-Robots-Tag": "noindex, nofollow, noarchive"}
         m_svg = re.match(r"^/r/([A-Za-z0-9_-]+)\.svg$", path)
         if m_svg:
             rid = m_svg.group(1)
             d, rem = load_valid_report(rid)
-            if not d: return self._send(410, "Report expired and destroyed (1h TTL).", "text/plain; charset=utf-8")
+            if not d: return self._send(410, "Report expired and destroyed (1h TTL).", "text/plain; charset=utf-8", extra_headers=priv_hdrs)
             d["report_url"] = f"{SITE_URL}/r/{rid}"
-            return self._send(200, core.render_ansi_to_svg_str(core.render_p2_ansi(d, site_url=SITE_URL)), "image/svg+xml; charset=utf-8", cache=f"private, max-age={rem}")
+            return self._send(200, core.render_ansi_to_svg_str(core.render_p2_ansi(d, site_url=SITE_URL)), "image/svg+xml; charset=utf-8", cache="no-store, no-cache, must-revalidate", extra_headers=priv_hdrs)
 
         m_r = re.match(r"^/r/([A-Za-z0-9_-]+)$", path)
         if m_r:
             rid = m_r.group(1)
             d, rem = load_valid_report(rid)
-            if not d: return self._send(410, EXPIRED_HTML)
-            return self._send(200, render_report_html(rid, d, rem))
+            if not d: return self._send(410, EXPIRED_HTML, extra_headers=priv_hdrs)
+            return self._send(200, render_report_html(rid, d, rem), cache="no-store, no-cache, must-revalidate", extra_headers=priv_hdrs)
         return self._send(404, "Not Found", "text/plain")
 
     def do_POST(self):
@@ -313,10 +375,18 @@ class Handler(BaseHTTPRequestHandler):
                 hist = [t for t in _RATE_MAP.get(ip, []) if now - t < 60]
                 if len(hist) >= 5: return self._send(429, json.dumps({"ok": False, "error": "rate limit"}), "application/json")
                 hist.append(now); _RATE_MAP[ip] = hist
-            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._send(400, json.dumps({"ok": False, "error": "invalid content-length"}), "application/json")
             if length <= 0 or length > MAX_BODY_BYTES: return self._send(400, json.dumps({"ok": False, "error": "invalid size"}), "application/json")
-            try: data = json.loads(self.rfile.read(length).decode("utf-8"))
-            except Exception: return self._send(400, json.dumps({"ok": False, "error": "invalid json"}), "application/json")
+            try:
+                raw_data = json.loads(self.rfile.read(length).decode("utf-8"))
+            except Exception:
+                return self._send(400, json.dumps({"ok": False, "error": "invalid json"}), "application/json")
+            data = sanitize_report_payload(raw_data)
+            if not data:
+                return self._send(400, json.dumps({"ok": False, "error": "invalid schema"}), "application/json")
             cleanup_expired()
             rid = secrets.token_urlsafe(12)
             with open(os.path.join(DATA_DIR, f"{rid}.json"), "w", encoding="utf-8") as f:

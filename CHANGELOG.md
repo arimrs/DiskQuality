@@ -1,5 +1,28 @@
 # Changelog / 更新日志
 
+## v1.0.5 (2026.11.23)
+### English
+- **Security & Privacy Vulnerability Fixes**:
+  - Fixed a **Stored XSS** vulnerability in `/r/<id>` where unescaped `</script>` sequences inside uploaded JSON fields could break out of inline `<script>` blocks (`safe_json_for_script` escaping).
+  - Enforced **server-side privacy sanitization** on `POST /api/v1/record` (strips any `hostname`/`ip`/`real_ip` fields and re-masks IPv4/IPv6 addresses before persistence in `/tmp`).
+  - Hardened web report privacy & security headers: added `X-Robots-Tag: noindex, nofollow, noarchive`, `<meta name="robots" content="noindex, nofollow, noarchive">`, `Referrer-Policy: no-referrer`, strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on `/r/<id>` and `.svg`, plus `/robots.txt` disallowing `/r/` and `/api/`.
+  - Hardened CLI subprocess commands with `shlex.quote()` against shell argument injection and added rate-limiting on `/api/v1/stats?hit=1`.
+- **UX Improvements**:
+  - Merged 8 interactive `[y/n]` prompts into **4 intuitive groups** (Disk Performance Suite, 50% Endurance Stress, Global Network & IP Quality, Metadata & Lifetime).
+  - Added **disk-aware estimated execution time** (calculated from target disk capacity and SSD/NVMe vs HDD media type before launching).
+
+### 简体中文
+- **安全与隐私漏洞修复**：
+  - 修复 `/r/<id>` 网页端因内联 `<script>` 未转义 `</script>` 导致的 **存储型 XSS 漏洞**（新增 `safe_json_for_script` 安全转义）。
+  - 在服务端 `POST /api/v1/record` 强制实施**服务端隐私脱敏校验**，入库前自动剥离 `hostname` / `ip` / `real_ip` 等敏感字段并对 IPv4/IPv6 二次打码，杜绝旧客户端或异常载荷泄露隐私。
+  - 全面加固网页端隐私保护响应头：新增 `X-Robots-Tag: noindex, nofollow, noarchive`、`<meta name="robots" ...>`、`Referrer-Policy: no-referrer`、严格 `CSP`、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`/r/` 与 `.svg` 强制 `Cache-Control: no-store` 及 `/robots.txt` 禁止收录 `/r/` 与 `/api/`。
+  - 对底层脚本全部动态路径与设备参数补充 `shlex.quote()` 防命令注入加固，并为 `/api/v1/stats?hit=1` 增加防刷频控。
+- **交互体验优化**：
+  - 将原本 8 次 `[y/n]` 确认合并精简为 **4 大同类测试组**，显著减少按键次数。
+  - 新增**基于硬盘容量与介质类型（SSD/NVMe vs HDD）的预计执行时间粗略估算**，启动前一目了然。
+
+---
+
 ## v1.0.4 (2026.11.23)
 ### English
 - **Live Visual Progress Bar & Friendly Kaomoji UX**: Added a real-time 24-block terminal progress bar (`[████████░░░░░░░░░░░░]  42%`) with timestamped per-step updates and varied kaomoji across interactive prompts and execution phases (keeping objective report outputs 100% clean).
