@@ -113,7 +113,8 @@ I18N = {
         "skip_txt": "？？？",
         "ns_cmd": "一键复测命令", "ns_url": "在线报告",
         "done_msg": "测试完成，点击查看你的临时结果链接（1 小时后自动销毁）：",
-        "tabs": ["📄 概览与拓扑", "💾 硬盘矩阵与多并发", "⏱️ 50%容量持久时序", "🌐 国际互联与IP质量", "🔌 元数据与寿命", "🖼️ 完整全景长图"],
+        "res_link": "测试结果",
+        "tabs": ["全部", "基本信息", "硬盘矩阵", "持久时序", "互联与IP", "元数据与寿命"],
     },
     "en": {
         "title": "PT / Storage / Backup VPS Objective Benchmark Report",
@@ -159,7 +160,8 @@ I18N = {
         "skip_txt": "???",
         "ns_cmd": "One-Click Command", "ns_url": "Online Report",
         "done_msg": "Benchmark complete! View temporary online report (auto-destroyed after 1h):",
-        "tabs": ["📄 Overview & Topology", "💾 Disk & Concurrency", "⏱️ 50% Endurance", "🌐 Global Net & IP", "🔌 Metadata & Life", "🖼️ Full Panorama"],
+        "res_link": "Test Result",
+        "tabs": ["All", "Overview", "Disk Matrix", "Endurance", "Net & IP", "Meta & Life"],
     },
 }
 
@@ -675,15 +677,14 @@ def parse_ansi_spans(line):
 
 
 def render_ansi_to_svg_str(ansi_text):
-    """Enhanced readability high-contrast SVG renderer (15.5px font, 26px line-height)."""
+    """Minimalist matte dark terminal SVG renderer matching NodeQuality aesthetic."""
     lines = ansi_text.splitlines()
-    line_height, pad_x, pad_y, width = 26, 32, 34, 1020
-    height = pad_y * 2 + len(lines) * line_height + 16
+    line_height, pad_x, pad_y, width = 25, 28, 28, 1020
+    height = pad_y * 2 + len(lines) * line_height + 12
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<defs><style>text { font-family: "JetBrains Mono","Cascadia Mono","Consolas","Microsoft YaHei","Noto Sans Mono CJK SC",monospace; font-size: 15.5px; letter-spacing: 0.2px; white-space: pre; }</style></defs>',
-        f'<rect width="100%" height="100%" rx="12" fill="#111318"/>',
-        f'<rect x="1" y="1" width="{width-2}" height="{height-2}" rx="11" fill="none" stroke="#2d3343" stroke-width="1.2"/>',
+        '<defs><style>text { font-family: "JetBrains Mono","Cascadia Mono","Consolas","Microsoft YaHei","Noto Sans Mono CJK SC",monospace; font-size: 15px; letter-spacing: 0.15px; white-space: pre; }</style></defs>',
+        f'<rect width="100%" height="100%" fill="#1d1e22"/>',
     ]
     for idx, line in enumerate(lines):
         y = pad_y + (idx + 1) * line_height - 6
@@ -699,37 +700,33 @@ def render_ansi_to_svg_str(ansi_text):
 
 
 def render_nodeseek_md(data, lang=None, site_url=None):
-    """Strictly valid NodeSeek multi-tab syntax (4-colon outer :::: tabs, 3-colon inner ::: tab-item)."""
+    """Clean image-based NodeSeek multi-tab format (strict 4-colon outer, 3-colon inner, no credits wall)."""
     lang = (lang or data.get("lang") or "zh").lower()
     L = I18N.get(lang, I18N["zh"])
-    s_url = site_url or data.get("site_url") or DEFAULT_SITE_URL
-    secs = build_sections(data, lang=lang, site_url=s_url)
-    credits = " | ".join(f"[{n}]({u})" for n, u in TOOL_CREDITS)
+    s_url = (site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
+    r_url = (data.get("report_url") or s_url).rstrip("/")
     tabs = L["tabs"]
+    keys = ["full", "overview", "disk", "endurance", "netip", "meta"]
+    blocks = []
+    for lbl, key in zip(tabs, keys):
+        blocks.append(f"::: tab-item {lbl}\n![{lbl}]({r_url}/{key}.svg)\n:::")
     return (
-        f"> **{L['credits_hdr']}** {credits}\n"
-        f"> **{L['ns_cmd']}**：`bash <(curl -sL {s_url})`  |  **{L['ns_url']}**：{data.get('report_url', s_url)}\n\n"
+        f"{L['res_link']}：[{r_url}]({r_url})\n\n"
         f":::: tabs\n"
-        f"::: tab-item {tabs[0]}\n```ansi\n{secs['overview']}\n```\n:::\n\n"
-        f"::: tab-item {tabs[1]}\n```ansi\n{secs['disk']}\n```\n:::\n\n"
-        f"::: tab-item {tabs[2]}\n```ansi\n{secs['endurance']}\n```\n:::\n\n"
-        f"::: tab-item {tabs[3]}\n```ansi\n{secs['netip']}\n```\n:::\n\n"
-        f"::: tab-item {tabs[4]}\n```ansi\n{secs['meta']}\n```\n:::\n"
-        f"::::\n"
+        + "\n\n".join(blocks)
+        + "\n::::\n"
     )
 
 
 def render_standard_md(data, lang=None, site_url=None):
+    """Clean image-based Markdown format (report link + full SVG image, no credits wall)."""
     lang = (lang or data.get("lang") or "zh").lower()
     L = I18N.get(lang, I18N["zh"])
-    s_url = site_url or data.get("site_url") or DEFAULT_SITE_URL
-    secs = build_sections(data, lang=lang, site_url=s_url)
-    credits = " · ".join(f"[{n}]({u})" for n, u in TOOL_CREDITS)
+    s_url = (site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
+    r_url = (data.get("report_url") or s_url).rstrip("/")
     return (
-        f"# {L['title']} ({data['topology']['masked_ip']})\n\n"
-        f"> **{L['credits_hdr']}** {credits}\n"
-        f"> **{L['ns_cmd']}**: `bash <(curl -sL {s_url})` | **{L['ns_url']}**: {data.get('report_url', s_url)}\n\n"
-        f"```text\n{strip_ansi(secs['full'])}\n```\n"
+        f"{L['res_link']}：[{r_url}]({r_url})\n\n"
+        f"![DiskQuality]({r_url}/full.svg)\n"
     )
 
 

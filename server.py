@@ -206,26 +206,24 @@ def render_report_html(rid, data, rem_sec):
     ns_md = core.render_nodeseek_md(data, lang=lang, site_url=SITE_URL)
     std_md = core.render_standard_md(data, lang=lang, site_url=SITE_URL)
 
-    page_keys = ["overview", "disk", "endurance", "netip", "meta", "full"]
+    page_keys = ["full", "overview", "disk", "endurance", "netip", "meta"]
     page_svgs = [core.render_ansi_to_svg_str(secs[k]) for k in page_keys]
     tab_labels = L["tabs"]
     rem_min = max(1, (rem_sec + 59) // 60)
 
     if lang == "en":
-        ttl_txt = f"⏱️ Ephemeral Report (No Persistence) · Auto-destroyed in ~<strong>{rem_min} min</strong> · Use ← / → keys to flip pages"
-        b_txt, b_ns, b_md, b_png, b_svg = "Copy Text", "Copy NodeSeek Format", "Copy Markdown", "Export HD PNG", "Download SVG"
-        prev_lbl, next_lbl = "← Prev", "Next →"
+        ttl_txt = f"{html.escape(data.get('version', core.VERSION))} · Ephemeral (auto-destroyed in ~{rem_min} min) · ← / → keys to switch"
+        b_txt, b_ns, b_md, b_png, b_svg = "Copy Text", "Copy NodeSeek Format", "Copy Markdown", "Export PNG", "SVG"
     else:
-        ttl_txt = f"⏱️ 临时查询页面（不持久化保存）· 剩余约 <strong>{rem_min} 分钟</strong> 自动销毁 · 支持键盘 ← / → 快捷翻页"
-        b_txt, b_ns, b_md, b_png, b_svg = "复制文本", "复制为NodeSeek格式", "复制为通用Markdown", "导出高清PNG图片", "下载SVG图片"
-        prev_lbl, next_lbl = "← 上一页", "下一页 →"
+        ttl_txt = f"{html.escape(data.get('version', core.VERSION))} · 临时页面（剩余约 {rem_min} 分钟自动销毁）· 键盘 ← / → 切换"
+        b_txt, b_ns, b_md, b_png, b_svg = "复制文本", "复制为NodeSeek格式", "复制为通用Markdown", "导出PNG", "SVG"
 
     tabs_html = "".join(
-        f'<button class="tab-btn{" active" if i==0 else ""}" id="tab-{i}" onclick="goPage({i})">{html.escape(lbl)}</button>'
+        f'<button class="tab{" active" if i==0 else ""}" id="tab-{i}" onclick="goPage({i})">{html.escape(lbl)}</button>'
         for i, lbl in enumerate(tab_labels)
     )
     pages_html = "".join(
-        f'<div class="page-pane{" active" if i==0 else ""}" id="pane-{i}">{svg}</div>'
+        f'<div class="pane{" active" if i==0 else ""}" id="pane-{i}">{svg}</div>'
         for i, svg in enumerate(page_svgs)
     )
 
@@ -235,45 +233,49 @@ def render_report_html(rid, data, rem_sec):
 <meta name="referrer" content="no-referrer">
 <title>DiskQuality — {html.escape(data['topology']['masked_ip'])}</title>
 <style>
-  *{{box-sizing:border-box}} body{{margin:0;padding:28px 18px 54px;background:#0a0d12;color:#f1f5f9;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.6}}
-  .wrap{{max-width:1050px;margin:0 auto}} .brand{{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px;text-decoration:none}}
-  .bar{{width:4px;height:36px;background:#22c55e;border-radius:2px}} .title{{font-size:34px;font-weight:700;color:#fff}}
-  .ver{{font-size:13px;color:#4ade80;background:#14532d66;border:1px solid #22c55e77;padding:4px 12px;border-radius:999px;font-family:monospace}}
-  .ttl{{text-align:center;font-size:13.5px;color:#fde047;margin-bottom:18px}}
-  .toolbar{{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}}
-  .grp{{display:flex;flex-wrap:wrap;gap:9px}}
-  .btn{{cursor:pointer;background:#151b26;color:#f1f5f9;border:1px solid #475569;border-radius:6px;padding:8px 16px;font-size:14px;font-weight:500;transition:0.15s}}
-  .btn:hover{{background:#1e293b;border-color:#94a3b8;color:#fff}}
-  .pager{{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:#111622;border:1px solid #232c3f;border-radius:10px;padding:10px 14px;margin-bottom:14px}}
-  .tabs{{display:flex;flex-wrap:wrap;gap:6px}}
-  .tab-btn{{cursor:pointer;background:transparent;color:#94a3b8;border:1px solid transparent;border-radius:6px;padding:7px 13px;font-size:13.5px;font-weight:600;transition:0.15s}}
-  .tab-btn:hover{{color:#f8fafc;background:#1e293b}}
-  .tab-btn.active{{color:#fff;background:#2563eb;border-color:#3b82f6}}
-  .nav-ctl{{display:flex;align-items:center;gap:8px}}
-  .nav-btn{{cursor:pointer;background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600}}
-  .nav-btn:hover{{background:#334155}}
-  .page-ind{{font-size:13px;color:#94a3b8;font-family:monospace;min-width:44px;text-align:center}}
-  .toast{{text-align:center;height:22px;font-size:13.5px;color:#4ade80;font-weight:600;margin-bottom:8px}}
-  .card{{background:#111318;border-radius:12px;overflow-x:auto;box-shadow:0 16px 40px rgba(0,0,0,0.55)}}
-  .page-pane{{display:none}} .page-pane.active{{display:block}}
+  *{{box-sizing:border-box}}
+  body{{margin:0;padding:24px 16px 48px;background:#0f0f13;color:#d4d4d8;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.5}}
+  .wrap{{max-width:1040px;margin:0 auto}}
+  .brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:22px;text-decoration:none}}
+  .bar{{width:4px;height:34px;background:#22c55e}}
+  .title{{font-size:32px;font-weight:600;color:#f4f4f5;letter-spacing:0.3px}}
+  .toolbar{{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}}
+  .grp{{display:flex;flex-wrap:wrap;gap:8px}}
+  .btn{{cursor:pointer;background:transparent;color:#d4d4d8;border:1px solid #4a4d57;border-radius:3px;padding:5px 12px;font-size:13px;transition:0.12s}}
+  .btn:hover{{background:#272930;border-color:#717584;color:#fff}}
+  .card{{background:#1d1e22;border:1px solid #2b2d33;border-radius:6px;overflow:hidden}}
+  .tabbar{{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px 6px;background:#1d1e22}}
+  .tabs{{display:inline-flex;flex-wrap:wrap;gap:4px;background:#141518;padding:4px;border-radius:5px;border:1px solid #26282e}}
+  .tab{{cursor:pointer;background:transparent;color:#3fb950;border:none;border-radius:4px;padding:5px 13px;font-size:13px;font-weight:500;transition:0.12s}}
+  .tab:hover{{color:#86efac;background:#22242a}}
+  .tab.active{{background:#3a3d45;color:#f4f4f5}}
+  .nav{{display:flex;align-items:center;gap:6px}}
+  .nav-btn{{cursor:pointer;background:#141518;color:#a1a1aa;border:1px solid #2b2d33;border-radius:4px;padding:3px 9px;font-size:13px}}
+  .nav-btn:hover{{color:#fff;border-color:#52525b}}
+  .pind{{font-size:12px;color:#71717a;font-family:monospace;min-width:34px;text-align:center}}
+  .viewport{{overflow-x:auto;padding:4px 0 8px}}
+  .pane{{display:none}} .pane.active{{display:block}}
   svg{{display:block;max-width:100%;height:auto}}
+  .foot{{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#71717a}}
+  .toast{{color:#4ade80;font-size:12.5px;min-height:18px}}
 </style></head><body><div class="wrap">
-  <a class="brand" href="/"><div class="bar"></div><div class="title">DiskQuality</div><span class="ver">{html.escape(data.get('version', core.VERSION))}</span></a>
-  <div class="ttl">{ttl_txt}</div>
+  <a class="brand" href="/"><div class="bar"></div><div class="title">DiskQuality</div></a>
   <div class="toolbar">
     <div class="grp"><button class="btn" onclick="cp('txt','{b_txt}')">{b_txt}</button><button class="btn" onclick="cp('ns','{b_ns}')">{b_ns}</button></div>
     <div class="grp"><button class="btn" onclick="cp('md','{b_md}')">{b_md}</button><button class="btn" onclick="dlPNG()">{b_png}</button><button class="btn" onclick="dlSVG()">{b_svg}</button></div>
   </div>
-  <div class="pager">
-    <div class="tabs">{tabs_html}</div>
-    <div class="nav-ctl">
-      <button class="nav-btn" onclick="stepPage(-1)">{prev_lbl}</button>
-      <span class="page-ind" id="pind">1 / {len(page_keys)}</span>
-      <button class="nav-btn" onclick="stepPage(1)">{next_lbl}</button>
+  <div class="card">
+    <div class="tabbar">
+      <div class="tabs">{tabs_html}</div>
+      <div class="nav">
+        <button class="nav-btn" onclick="stepPage(-1)">‹</button>
+        <span class="pind" id="pind">1/{len(page_keys)}</span>
+        <button class="nav-btn" onclick="stepPage(1)">›</button>
+      </div>
     </div>
+    <div class="viewport">{pages_html}</div>
   </div>
-  <div class="toast" id="toast"></div>
-  <div class="card">{pages_html}</div>
+  <div class="foot"><span>{ttl_txt}</span><span class="toast" id="toast"></span></div>
 </div><script>
 const P={{txt:{safe_json_for_script(plain_txt)},ns:{safe_json_for_script(ns_md)},md:{safe_json_for_script(std_md)},svgs:{safe_json_for_script(page_svgs)}}};
 let cur=0, total={len(page_keys)};
@@ -283,11 +285,11 @@ function goPage(i){{
     document.getElementById('tab-'+k).classList.toggle('active',k===cur);
     document.getElementById('pane-'+k).classList.toggle('active',k===cur);
   }}
-  document.getElementById('pind').textContent=(cur+1)+' / '+total;
+  document.getElementById('pind').textContent=(cur+1)+'/'+total;
 }}
 function stepPage(d){{goPage(cur+d);}}
 document.addEventListener('keydown',e=>{{if(e.key==='ArrowLeft')stepPage(-1);if(e.key==='ArrowRight')stepPage(1);}});
-function tip(m){{const e=document.getElementById('toast');e.textContent='✔ '+m;setTimeout(()=>e.textContent='',2500);}}
+function tip(m){{const e=document.getElementById('toast');e.textContent='Copied: '+m;setTimeout(()=>e.textContent='',2200);}}
 async function cp(k,n){{try{{await navigator.clipboard.writeText(P[k]);tip(n);}}catch(e){{const t=document.createElement('textarea');t.value=P[k];document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();tip(n);}}}}
 function dlSVG(){{const svg=P.svgs[cur];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([svg],{{type:'image/svg+xml'}}));a.download='diskquality_{rid}_p'+(cur+1)+'.svg';a.click();tip('SVG');}}
 function dlPNG(){{const svg=P.svgs[cur];const s=document.querySelector('#pane-'+cur+' svg'),w=parseInt(s.getAttribute('width')),h=parseInt(s.getAttribute('height')),img=new Image(),u=URL.createObjectURL(new Blob([svg],{{type:'image/svg+xml;charset=utf-8'}}));img.onload=()=>{{const c=document.createElement('canvas');c.width=w*2;c.height=h*2;const x=c.getContext('2d');x.scale(2,2);x.drawImage(img,0,0);URL.revokeObjectURL(u);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='diskquality_{rid}_p'+(cur+1)+'.png';a.click();tip('PNG');}};img.src=u;}}
@@ -351,6 +353,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/": return self._send(200, render_home_html(), "text/html; charset=utf-8", cache="no-store")
 
         priv_hdrs = {"X-Robots-Tag": "noindex, nofollow, noarchive"}
+        m_psvg = re.match(r"^/r/([A-Za-z0-9_-]+)/(full|overview|disk|endurance|netip|meta)\.svg$", path)
+        if m_psvg:
+            rid, sec_key = m_psvg.group(1), m_psvg.group(2)
+            d, rem = load_valid_report(rid)
+            if not d: return self._send(410, "Report expired and destroyed (1h TTL).", "text/plain; charset=utf-8", extra_headers=priv_hdrs)
+            d["report_url"] = f"{SITE_URL}/r/{rid}"
+            secs = core.build_sections(d, lang=d.get("lang", "zh"), site_url=SITE_URL)
+            return self._send(200, core.render_ansi_to_svg_str(secs[sec_key]), "image/svg+xml; charset=utf-8", cache="no-store, no-cache, must-revalidate", extra_headers=priv_hdrs)
+
         m_svg = re.match(r"^/r/([A-Za-z0-9_-]+)\.svg$", path)
         if m_svg:
             rid = m_svg.group(1)
