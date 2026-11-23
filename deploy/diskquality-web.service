@@ -1,0 +1,21 @@
+[Unit]
+Description=DiskQuality Ephemeral Script & 1h-TTL Query Server
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/diskquality-server
+Environment=DQ_PORT=8765
+Environment=DQ_SITE_URL=https://your-domain.example
+Environment=DQ_DATA_DIR=/tmp/diskquality_ephemeral
+Environment=DQ_TTL_SECONDS=3600
+ExecStart=/usr/bin/python3 /opt/diskquality-server/server.py
+Restart=always
+RestartSec=3
+MemoryMax=64M
+CPUQuota=10%
+Nice=15
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
