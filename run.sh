@@ -93,10 +93,10 @@ if [[ -z "$LANG_CODE" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral) ${START_EMO}${RESET}"
+    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min Budget) ${START_EMO}${RESET}"
     echo -e "${GREEN}Version:${RESET} ${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}Command:${RESET} bash <(curl -sL ${SITE_URL})"
 else
-    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）${START_EMO}${RESET}"
+    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算）${START_EMO}${RESET}"
     echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
 fi
 

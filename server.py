@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.5 — Hardened Paginated Ephemeral Web & API Server (Bilingual zh/en)
+DiskQuality v1.0.5 — Hardened Paginated Web & API Server (Bilingual zh/en)
 - Paginated report viewer (6 interactive pages + Prev/Next + Arrow-Key navigation)
 - Hardened against Stored XSS, search-engine indexing, referrer leakage, and unmasked IP storage
-- Zero persistence (/tmp storage, strict 1h TTL auto-destroy, 410 Gone after expiry)
+- Persistent report storage by default (DQ_TTL_SECONDS=0; optional TTL if > 0)
 """
 
 import os
@@ -19,12 +19,12 @@ from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.environ.get("DQ_DATA_DIR", "/tmp/diskquality_ephemeral")
+DATA_DIR = os.environ.get("DQ_DATA_DIR", os.path.join(APP_DIR, "data"))
 STATS_FILE = os.environ.get("DQ_STATS_FILE", os.path.join(APP_DIR, "run_stats.json"))
 SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 PORT = int(os.environ.get("DQ_PORT", "8765"))
-TTL_SECONDS = int(os.environ.get("DQ_TTL_SECONDS", "3600"))
-MAX_REPORTS = 200
+TTL_SECONDS = int(os.environ.get("DQ_TTL_SECONDS", "0"))
+MAX_REPORTS = int(os.environ.get("DQ_MAX_REPORTS", "0"))
 MAX_BODY_BYTES = 256 * 1024
 TAIPEI_TZ = timezone(timedelta(hours=8))
 
@@ -119,6 +119,8 @@ with open(os.path.join(APP_DIR, "disk_bench_core.py"), "rb") as _f:
 
 
 def cleanup_expired():
+    if TTL_SECONDS <= 0 and MAX_REPORTS <= 0:
+        return
     now = time.time()
     try:
         entries = []
@@ -127,10 +129,10 @@ def cleanup_expired():
             fp = os.path.join(DATA_DIR, fn)
             try:
                 mt = os.path.getmtime(fp)
-                if now - mt >= TTL_SECONDS: os.unlink(fp)
+                if TTL_SECONDS > 0 and now - mt >= TTL_SECONDS: os.unlink(fp)
                 else: entries.append((mt, fp))
             except OSError: pass
-        if len(entries) > MAX_REPORTS:
+        if MAX_REPORTS > 0 and len(entries) > MAX_REPORTS:
             entries.sort(key=lambda x: x[0])
             for _, fp in entries[: len(entries) - MAX_REPORTS]:
                 try: os.unlink(fp)
@@ -144,19 +146,24 @@ def _janitor():
         cleanup_expired()
 
 
-threading.Thread(target=_janitor, daemon=True).start()
+if TTL_SECONDS > 0 or MAX_REPORTS > 0:
+    threading.Thread(target=_janitor, daemon=True).start()
 
 
 def load_valid_report(rid):
     fp = os.path.join(DATA_DIR, f"{rid}.json")
     if not os.path.exists(fp): return None, 0
-    age = time.time() - os.path.getmtime(fp)
-    if age >= TTL_SECONDS:
-        try: os.unlink(fp)
-        except OSError: pass
-        return None, 0
+    if TTL_SECONDS > 0:
+        age = time.time() - os.path.getmtime(fp)
+        if age >= TTL_SECONDS:
+            try: os.unlink(fp)
+            except OSError: pass
+            return None, 0
+        rem = max(0, int(TTL_SECONDS - age))
+    else:
+        rem = 0
     with open(fp, "r", encoding="utf-8") as f:
-        return json.load(f), max(0, int(TTL_SECONDS - age))
+        return json.load(f), rem
 
 
 def render_home_html():
@@ -186,7 +193,7 @@ def render_home_html():
   <div class="brand"><div class="bar"></div><div class="title">DiskQuality</div><span class="ver">{core.VERSION}</span></div>
   <div class="stats">Taipei Time: <b>{st['taipei_time']}</b> &nbsp;|&nbsp; 累计运行 / Total Runs: <b>{st['total_runs']}</b> &nbsp;|&nbsp; 今日运行 / Today Runs: <b>{st['today_runs']}</b></div>
   <div class="cmd"><div class="code"><span class="prompt">&gt;</span>bash &lt;(curl -sL {SITE_URL})</div><button class="btn" id="cpBtn" onclick="copyCmd()">Copy / 复制命令</button></div>
-  <div class="notice">⚠️ <strong>Zero Persistence / 零持久化声明</strong>: Ephemeral query only — all reports &amp; images are permanently destroyed after <strong>1 hour</strong>. 仅提供测试与 1 小时临时查询，到期自动销毁。</div>
+  <div class="notice"><strong>Privacy &amp; Storage / 隐私与存储说明</strong>: Reports are archived persistently with masked IPs (no hostnames stored) and blocked from search-engine indexing. 测评报告默认长期保存，公网 IP 自动打码且禁止搜索引擎收录。</div>
   <div class="panel"><h3>Acknowledgments &amp; Upstream Tools / 致谢与原站</h3><ul>{credits_html}</ul></div>
 </div><script>
 function copyCmd(){{navigator.clipboard.writeText("bash <(curl -sL {SITE_URL})").then(()=>{{const b=document.getElementById('cpBtn');b.textContent='Copied ✔';setTimeout(()=>b.textContent='Copy / 复制命令',2000);}});}}
@@ -212,10 +219,18 @@ def render_report_html(rid, data, rem_sec):
     rem_min = max(1, (rem_sec + 59) // 60)
 
     if lang == "en":
-        ttl_txt = f"{html.escape(data.get('version', core.VERSION))} · Ephemeral (auto-destroyed in ~{rem_min} min) · ← / → keys to switch"
+        ttl_txt = (
+            f"{html.escape(data.get('version', core.VERSION))} · Auto-destroyed in ~{rem_min} min · ← / → keys to switch"
+            if TTL_SECONDS > 0 else
+            f"{html.escape(data.get('version', core.VERSION))} · Persistent Report · ← / → keys to switch"
+        )
         b_txt, b_ns, b_md, b_png, b_svg = "Copy Text", "Copy NodeSeek Format", "Copy Markdown", "Export PNG", "SVG"
     else:
-        ttl_txt = f"{html.escape(data.get('version', core.VERSION))} · 临时页面（剩余约 {rem_min} 分钟自动销毁）· 键盘 ← / → 切换"
+        ttl_txt = (
+            f"{html.escape(data.get('version', core.VERSION))} · 剩余约 {rem_min} 分钟自动销毁 · 键盘 ← / → 切换"
+            if TTL_SECONDS > 0 else
+            f"{html.escape(data.get('version', core.VERSION))} · 永久保存报告 · 键盘 ← / → 切换"
+        )
         b_txt, b_ns, b_md, b_png, b_svg = "复制文本", "复制为NodeSeek格式", "复制为通用Markdown", "导出PNG", "SVG"
 
     tabs_html = "".join(

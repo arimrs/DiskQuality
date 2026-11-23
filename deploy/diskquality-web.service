@@ -7,8 +7,8 @@ Type=simple
 WorkingDirectory=/opt/diskquality-server
 Environment=DQ_PORT=8765
 Environment=DQ_SITE_URL=https://your-domain.example
-Environment=DQ_DATA_DIR=/tmp/diskquality_ephemeral
-Environment=DQ_TTL_SECONDS=3600
+Environment=DQ_DATA_DIR=/opt/diskquality-server/data
+Environment=DQ_TTL_SECONDS=0
 ExecStart=/usr/bin/python3 /opt/diskquality-server/server.py
 Restart=always
 RestartSec=3

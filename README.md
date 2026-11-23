@@ -5,14 +5,14 @@
 [![Version](https://img.shields.io/badge/version-v1.0.5-22c55e.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux VPS benchmark suite built for **PT seedboxes, storage VPS, and backup servers**, paired with an ephemeral paginated query server.
+An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux VPS benchmark suite built for **PT seedboxes, storage VPS, and backup servers**, paired with a minimalist paginated report server.
 
 - **Adaptive 50% Capacity Algorithm & >65% Disk Guard**: Automatically scales the endurance stress file to **50% of total disk capacity** (clamped to ≤ 80% of free space) within a **20-minute budget**. Runs a pre-test disk usage scan and **automatically cancels if disk usage exceeds 65%**.
-- **Live Progress Bar & Thorough Pre/Post Cleanup**: Real-time visual progress bar with friendly kaomoji feedback, plus thorough environment cleanup before starting, after completion, and on `Ctrl+C` (`SIGINT`/`SIGTERM`/`EXIT` traps + `fstrim`).
+- **Live Progress Bar & Thorough Pre/Post Cleanup**: Real-time visual progress bar with randomized start/end kaomoji feedback, plus thorough environment cleanup before starting, after completion, and on `Ctrl+C` (`SIGINT`/`SIGTERM`/`EXIT` traps + `fstrim`).
 - **Comprehensive PT / Storage / Backup Coverage (9 Dimensions)**: Covers Disk Topology, `ioping` latency, FIO 14-item Direct I/O matrix, **Small-Block High-Concurrency I/O** (PT seeding / piece hashing / multi-stream backup / 4K burst), production `fsync`, 50%-capacity endurance + per-minute `iostat`, 10k-file metadata + SMART/Ext4 lifetime, **Global Connectivity & Bulk Download Throughput**, and **IP Quality, Platform Access & Empirical Access Denial Probability**.
 - **Pure Objective Metrics**: Zero subjective recommendations or tuning opinions — raw, reproducible numbers only.
-- **Interactive Module Selection**: Choose language at startup (`zh` / `en`), pre-flight path & dependency check (exits cleanly if installation is declined), and NodeQuality-style `[y/n]` module toggles (skipped sections are rendered as bold red **`???`**).
-- **Paginated Web Report & Enhanced Readability**: 6-page interactive paginated report viewer (`← Prev` / `Next →` buttons + keyboard `←`/`→` arrows + Full Panorama view) with enlarged high-contrast typography (`15.5px` / `26px` line height), zero-persistence `/tmp` storage with **1-hour TTL auto-destroy**, client-side Canvas PNG export, and one-click **Copy Text / NodeSeek  / Markdown / HD PNG / SVG** buttons.
+- **Interactive Module Selection**: Choose language at startup (`zh` / `en`), pre-flight path & dependency check (exits cleanly if installation is declined), and 4 merged `[Y/n]` module groups with disk-aware ETA (skipped sections render as bold red **`???`**).
+- **Minimalist Paginated Web Report & Persistent Storage**: 6-page NodeQuality-style matte dark report viewer (`←` / `→` keyboard navigation + Full Panorama view) with persistent storage by default (`DQ_TTL_SECONDS=0`; optional TTL supported), client-side Canvas PNG export, and one-click **Copy Text / NodeSeek (image tabs) / Markdown / PNG / SVG** buttons.
 
 ---
 
