@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.5 — Hardened Paginated Web & API Server (Bilingual zh/en)
+DiskQuality v1.0.6 — Hardened Paginated Web & API Server (Bilingual zh/en)
 - Paginated report viewer (6 interactive pages + Prev/Next + Arrow-Key navigation)
 - Hardened against Stored XSS, search-engine indexing, referrer leakage, and unmasked IP storage
 - Persistent report storage by default (DQ_TTL_SECONDS=0; optional TTL if > 0)

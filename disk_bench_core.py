@@ -27,12 +27,13 @@ import unicodedata
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.5 (2026.11.23)"
+VERSION = "v1.0.6 (2026.11.23)"
 DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
     ("fio", "https://github.com/axboe/fio"),
     ("ioping", "https://github.com/koct9i/ioping"),
+    ("Geekbench 5/6", "https://www.geekbench.com"),
     ("sysstat / iostat", "https://github.com/sysstat/sysstat"),
     ("smartmontools", "https://www.smartmontools.org"),
     ("e2fsprogs / tune2fs", "https://e2fsprogs.sourceforge.net"),
@@ -84,6 +85,8 @@ I18N = {
         "k_cache": "缓存与对齐：            ", "cache_val": "write_cache={wc} | RA={ra}KB | 扇区={sec} | TRIM={trim}",
         "trim_yes": "支持", "trim_no": "不支持",
         "k_spec": "压测文件规格：          ", "spec_val": "50% 自适应压测文件 = {sgb} GB (短矩阵 {mgb} GB, Direct I/O)",
+        "k_gb": "CPU 跑分 ({ver})：   ", "k_gb_skip": "CPU 跑分 (Geekbench)：  ", "k_gb_url": "跑分详情：              ",
+        "gb_sc": "单核", "gb_mc": "多核",
         "s2": "二、底层访问与同步延迟基线 (ioping)",
         "k_res": "检测结果：              ",
         "k_seek": "Direct 随机寻道：       ", "k_cread": "Page Cache 缓存读：     ", "k_swrite": "持久化同步写 (fsync)：  ",
@@ -131,6 +134,8 @@ I18N = {
         "k_cache": "Cache & Alignment:      ", "cache_val": "write_cache={wc} | RA={ra}KB | Sector={sec} | TRIM={trim}",
         "trim_yes": "Supported", "trim_no": "Unsupported",
         "k_spec": "Benchmark File Size:    ", "spec_val": "50% Adaptive Stress File = {sgb} GB (Matrix {mgb} GB, Direct I/O)",
+        "k_gb": "CPU Score ({ver}): ", "k_gb_skip": "CPU Score (Geekbench):  ", "k_gb_url": "Score Details:          ",
+        "gb_sc": "Single-Core", "gb_mc": "Multi-Core",
         "s2": "2. Latency Baseline (ioping)",
         "k_res": "Result:                 ",
         "k_seek": "Direct Random Seek:     ", "k_cread": "Page Cache Read:        ", "k_swrite": "Sync Write (fsync):     ",
@@ -307,6 +312,77 @@ def collect_poweron_lifetime(mount_dev, base_dev):
         "mount_count": mc.group(1).strip() if mc else "N/A",
         "lifetime_writes": lw.group(1).strip() if lw else "N/A",
     }
+
+
+def run_geekbench(mode, work_dir):
+    """Run full Geekbench 5 or Geekbench 6 CPU benchmark (Single-Core & Multi-Core) inside work_dir."""
+    mode = (mode or "skip").lower()
+    if mode not in ("gb5", "gb6"):
+        return None
+    _, arch, _ = run_cmd("uname -m")
+    is_arm = arch in ("aarch64", "arm64")
+    if mode == "gb5":
+        ver_label = "Geekbench 5"
+        url = (
+            "https://cdn.geekbench.com/Geekbench-5.5.1-LinuxARMPreview.tar.gz"
+            if is_arm else
+            "https://cdn.geekbench.com/Geekbench-5.5.1-Linux.tar.gz"
+        )
+        bin_name = "geekbench5"
+    else:
+        ver_label = "Geekbench 6"
+        url = (
+            "https://cdn.geekbench.com/Geekbench-6.3.0-LinuxARMPreview.tar.gz"
+            if is_arm else
+            "https://cdn.geekbench.com/Geekbench-6.3.0-Linux.tar.gz"
+        )
+        bin_name = "geekbench6"
+
+    gb_dir = os.path.join(work_dir, f"_{mode}")
+    os.makedirs(gb_dir, exist_ok=True)
+    tgz = os.path.join(gb_dir, "gb.tar.gz")
+    q_tgz, q_dir = shlex.quote(tgz), shlex.quote(gb_dir)
+
+    rc, _, err = run_cmd(f"curl -fsSLm 120 {shlex.quote(url)} -o {q_tgz} && tar -xzf {q_tgz} -C {q_dir} --strip-components=1", timeout=150)
+    if rc != 0:
+        return {"version": ver_label, "single_core": "N/A", "multi_core": "N/A", "url": "", "error": "download_failed"}
+
+    bin_path = os.path.join(gb_dir, bin_name)
+    if not os.path.exists(bin_path):
+        # Fallback search inside extracted dir
+        for root_d, _, files in os.walk(gb_dir):
+            if bin_name in files:
+                bin_path = os.path.join(root_d, bin_name)
+                break
+    if not os.path.exists(bin_path):
+        return {"version": ver_label, "single_core": "N/A", "multi_core": "N/A", "url": "", "error": "binary_missing"}
+
+    rc, out, err = run_cmd(f"chmod +x {shlex.quote(bin_path)} && {shlex.quote(bin_path)} --upload 2>&1", timeout=600)
+    combined = (out or "") + "\n" + (err or "")
+    m_url = re.search(r"https://browser\.geekbench\.com/v[56]/cpu/\d+", combined)
+    res_url = m_url.group(0) if m_url else ""
+
+    sc, mc = "N/A", "N/A"
+    # Try parsing directly from CLI output first
+    m_sc = re.search(r"Single-Core Score\s+(\d+)", combined, re.I)
+    m_mc = re.search(r"Multi-Core Score\s+(\d+)", combined, re.I)
+    if m_sc: sc = m_sc.group(1)
+    if m_mc: mc = m_mc.group(1)
+
+    # If CLI output only gave the upload URL (standard for Geekbench 5/6 free CLI), fetch official result page
+    if (sc == "N/A" or mc == "N/A") and res_url:
+        try:
+            req = urllib.request.Request(res_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                page = resp.read().decode("utf-8", errors="ignore")
+            scores = re.findall(r"<div class=['\"]score['\"]>\s*(\d+)\s*</div>", page)
+            if len(scores) >= 2:
+                sc, mc = scores[0], scores[1]
+        except Exception:
+            pass
+
+    shutil.rmtree(gb_dir, ignore_errors=True)
+    return {"version": ver_label, "single_core": sc, "multi_core": mc, "url": res_url}
 
 
 def run_ioping_tests(work_dir):
@@ -515,9 +591,20 @@ def build_sections(data, lang=None, site_url=None):
         f"{C_CYN}{L['k_dev']}{C_GRN}{L['dev_val'].format(dev=t['mount_dev'], fs=t['fs_type'], rota=t['rotational'], sched=t['scheduler'])}{C_RST}",
         f"{C_CYN}{L['k_cache']}{C_GRN}{L['cache_val'].format(wc=t['write_cache'], ra=t['read_ahead_kb'], sec=t['sector'], trim=L['trim_yes'] if t['trim_supported'] else L['trim_no'])}{C_RST}",
         f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'])}{C_RST}",
-        "",
-        L["s2"],
     ]
+    gb = data.get("geekbench")
+    if not gb:
+        sec_overview.append(f"{C_CYN}{L['k_gb_skip']}{skip}")
+    else:
+        sc_v, mc_v = gb.get("single_core", "N/A"), gb.get("multi_core", "N/A")
+        gb_ver = gb.get("version", "Geekbench")
+        sec_overview.append(
+            f"{C_CYN}{L['k_gb'].format(ver=gb_ver)}"
+            f"{C_BG_GRN} {L['gb_sc']}: {sc_v} {C_RST}  {C_BG_GRN} {L['gb_mc']}: {mc_v} {C_RST}"
+        )
+        if gb.get("url"):
+            sec_overview.append(f"{C_CYN}{L['k_gb_url']}{C_GRN}{C_U}{gb['url']}{C_RST}")
+    sec_overview += ["", L["s2"]]
     io = data.get("ioping")
     if not sel.get("ioping", True) or not io:
         sec_overview.append(f"{C_CYN}{L['k_res']}{skip}")
@@ -663,8 +750,12 @@ ANSI_BG_MAP = {
 }
 
 
-def _disp_cells(s):
-    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in s)
+def _span_px_width(s, ascii_w=8.4, cjk_w=14.2):
+    """Calculate accurate pixel width for mixed ASCII + CJK monospace text."""
+    total = 0.0
+    for ch in s:
+        total += cjk_w if unicodedata.east_asian_width(ch) in ("W", "F") else ascii_w
+    return total
 
 
 def parse_ansi_spans(line):
@@ -686,9 +777,9 @@ def parse_ansi_spans(line):
 
 
 def render_ansi_to_svg_str(ansi_text):
-    """HardwareQuality / NodeQuality faithful charcoal terminal SVG renderer with real highlight bars & status badges."""
+    """HardwareQuality / NodeQuality faithful charcoal terminal SVG renderer with exact x-locked highlight bars."""
     lines = ansi_text.splitlines()
-    line_height, pad_x, pad_y, char_w, width = 22, 26, 24, 8.4, 960
+    line_height, pad_x, pad_y, width = 22, 26, 24, 980
     height = pad_y * 2 + len(lines) * line_height + 10
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
@@ -697,21 +788,21 @@ def render_ansi_to_svg_str(ansi_text):
     ]
     for idx, line in enumerate(lines):
         y = pad_y + (idx + 1) * line_height - 5
-        rects, els = [], []
-        col_x = 0
+        rects, texts = [], []
+        cur_x = float(pad_x)
         for txt, fg, bg, bold, ul in parse_ansi_spans(line):
-            cells = _disp_cells(txt)
+            px_w = _span_px_width(txt)
             if bg:
-                rx_x = pad_x + col_x * char_w
-                rx_w = max(cells * char_w + 2, 12)
-                rects.append(f'<rect x="{rx_x:.1f}" y="{y - 14.5:.1f}" width="{rx_w:.1f}" height="18.5" rx="2" fill="{bg}"/>')
+                # Lock both <rect> and <text> to exact cur_x so CJK/ASCII font variance can NEVER clip left or right
+                rx_w = max(px_w + 4.0, 14.0)
+                rects.append(f'<rect x="{cur_x:.1f}" y="{y - 14.5:.1f}" width="{rx_w:.1f}" height="18.5" rx="2" fill="{bg}"/>')
             fw = ' font-weight="700"' if bold else ''
             td = ' text-decoration="underline"' if ul else ''
             fill_c = "#18181b" if bg == "#d8d8d8" else ("#ffffff" if bg in ("#52a31c", "#c92a2a") else fg)
-            els.append(f'<tspan fill="{fill_c}"{fw}{td}>{html.escape(txt)}</tspan>')
-            col_x += cells
+            texts.append(f'<text x="{cur_x:.1f}" y="{y}" fill="{fill_c}"{fw}{td} xml:space="preserve">{html.escape(txt)}</text>')
+            cur_x += px_w + (4.0 if bg else 0.0)
         svg.extend(rects)
-        svg.append(f'<text x="{pad_x}" y="{y}" xml:space="preserve">{"".join(els)}</text>')
+        svg.extend(texts)
     svg.append("</svg>")
     return "\n".join(svg)
 
@@ -816,6 +907,9 @@ def run_benchmark_cli(args):
 
     os.makedirs(work_dir, exist_ok=True)
     sel = {k: getattr(args, k).lower() == "y" for k in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta")}
+    gb_mode = (getattr(args, "geekbench", "gb5") or "skip").lower()
+    if gb_mode not in ("gb5", "gb6"):
+        gb_mode = "skip"
 
     # 3. Clean visual progress bar tracker (kaomoji reserved strictly for end completion)
     end_kaomojis = (
@@ -827,6 +921,7 @@ def run_benchmark_cli(args):
     )
     total_steps = (
         1  # topology
+        + (1 if gb_mode != "skip" else 0)
         + (1 if sel["ioping"] else 0)
         + (14 if sel["matrix"] else 0)
         + (4 if sel["prod"] else 0)
@@ -962,6 +1057,13 @@ def run_benchmark_cli(args):
         life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"])
         show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance=1)
 
+    gb_res = None
+    if gb_mode != "skip":
+        gb_lbl = "Geekbench 5" if gb_mode == "gb5" else "Geekbench 6"
+        show_bar(f"正在运行完整 {gb_lbl} CPU 单核/多核跑分（约 2–4 分钟）...", f"Running full {gb_lbl} CPU Single/Multi-Core benchmark (~2–4m)...", advance=0)
+        gb_res = run_geekbench(gb_mode, work_dir)
+        show_bar(f"{gb_lbl} CPU 跑分完成", f"{gb_lbl} CPU benchmark completed", advance=1)
+
     thorough_cleanup(work_dir, args.target, do_trim=True)
     end_emo = random.choice(end_kaomojis)
     show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1, suffix=end_emo)
@@ -969,7 +1071,7 @@ def run_benchmark_cli(args):
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,
         "report_time": start_str, "elapsed_min": round((time.time() - t_start) / 60.0, 2),
-        "selected": sel, "plan": plan, "topology": topo,
+        "selected": sel, "plan": plan, "topology": topo, "geekbench": gb_res,
         "lifetime": life_res, "ioping": ioping_res, "matrix": matrix_res,
         "production": prod_res, "concurrency": conc_res, "sustained": sustained_res,
         "network": net_res, "ip_quality": ipq_res, "metadata": meta_res,
@@ -979,7 +1081,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.5"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.6"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))
@@ -999,6 +1101,7 @@ def main():
     ap.add_argument("--minutes", type=float, default=20.0)
     for mod in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta"):
         ap.add_argument(f"--{mod}", default="y")
+    ap.add_argument("--geekbench", default="gb5", choices=["gb5", "gb6", "skip"])
     ap.add_argument("--site-url", default=DEFAULT_SITE_URL)
     ap.add_argument("--upload-url", default="")
     run_benchmark_cli(ap.parse_args())

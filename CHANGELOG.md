@@ -1,5 +1,24 @@
 # Changelog / 更新日志
 
+## v1.0.6 (2026.11.23)
+### English
+- **Full Geekbench 5 / Geekbench 6 CPU Benchmark (`Single-Core` & `Multi-Core`)**:
+  - Added interactive CPU benchmark selector (`[1=GB5 (default), 2=GB6, 3=Skip]`) supporting both `x86_64` and `aarch64`, with unified Single-Core / Multi-Core badge display and official Geekbench result URLs (skipped renders as bold red `???`).
+- **Fixed SVG Highlight-Bar Left-Edge Text Clipping Bug**:
+  - Locked every SVG `<text>` and `<rect>` span to identical pixel coordinates (`x`) with accurate CJK (`14.2px`) vs ASCII (`8.4px`) width math, completely eliminating left-edge truncation on `Intel(R)`, `╚═`, `内存`, and `Virtual Disk` highlight bars across all browsers and OSes.
+- **Persistent Report Storage**:
+  - Removed the 1-hour auto-destroy limit by default (`DQ_TTL_SECONDS=0`) so published report links and NodeSeek image embeds remain permanently accessible.
+
+### 简体中文
+- **新增完整 Geekbench 5 / Geekbench 6 CPU 单核与多核跑分**：
+  - 启动交互新增 `5/5` 选项，支持按 `1 / 2 / 3` 选择 **Geekbench 5（默认）/ Geekbench 6 / 跳过**，兼容 `x86_64` 与 `aarch64`，统一输出单核 / 多核分数徽章与官方详情链接（跳过时标红 `？？？`）。
+- **彻底修复 SVG 高亮条左侧文字截断 / 错位 Bug**：
+  - 重写 SVG 渲染器坐标计算，将每个高亮 `<rect>` 与对应 `<text>` 锁定在同一精确像素 `x` 坐标，并按中英文实际字宽（CJK `14.2px` / ASCII `8.4px`）独立核算背景条宽度，彻底根治跨浏览器/跨系统下 `Intel(R)`、`内存`、`Virtual Disk` 左侧被吞字的问题。
+- **报告永久保存升级**：
+  - 默认移除 1 小时销毁限制（`DQ_TTL_SECONDS=0`），已生成的报告链接与 NodeSeek 多图帖子长期有效不再裂图。
+
+---
+
 ## v1.0.5 (2026.11.23)
 ### English
 - **Security & Privacy Vulnerability Fixes**:
