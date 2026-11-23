@@ -20,7 +20,7 @@ An ultra-lightweight, bilingual (**English / 简体中文**), purely objective L
 Run directly on any Linux VPS (Debian / Ubuntu / RHEL / Rocky / AlmaLinux):
 
 ```bash
-bash <(curl -sL https://your-domain.example)
+bash <(curl -sL https://test.sakurado.top)
 ```
 
 Optional CLI flags:

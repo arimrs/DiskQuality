@@ -4,7 +4,7 @@
 # ==============================================================================
 set -euo pipefail
 
-SITE_URL="${DQ_SITE_URL:-https://your-domain.example}"
+SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
 SCRIPT_VERSION="v1.0.3"
 SCRIPT_UPDATED="2026.11.22"
 YELLOW='\033[1;33m'

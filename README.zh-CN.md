@@ -20,7 +20,7 @@
 在任意 Linux VPS（Debian / Ubuntu / RHEL / Rocky / AlmaLinux）上直接运行：
 
 ```bash
-bash <(curl -sL https://your-domain.example)
+bash <(curl -sL https://test.sakurado.top)
 ```
 
 可选参数：
