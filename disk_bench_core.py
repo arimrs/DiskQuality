@@ -15,6 +15,7 @@ import sys
 import json
 import html
 import time
+import random
 import signal
 import atexit
 import socket
@@ -798,11 +799,14 @@ def run_benchmark_cli(args):
     os.makedirs(work_dir, exist_ok=True)
     sel = {k: getattr(args, k).lower() == "y" for k in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta")}
 
-    # 3. Visual progress bar tracker with varied kaomoji
-    kaomojis = [
-        "( •̀ ω •́ )✧", "(ง •̀_•́)ง", "(๑•̀ㅂ•́)و✧", "ヾ(•ω•`)o",
-        "(o´ω`o)ﾉ", "٩(｡•́‿•̀｡)۶", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(*^▽^*)",
-    ]
+    # 3. Clean visual progress bar tracker (kaomoji reserved strictly for end completion)
+    end_kaomojis = (
+        "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "( •̀ ω •́ )✧", "(๑•̀ㅂ•́)و✧", "ヾ(•ω•`)o",
+        "(o´ω`o)ﾉ", "٩(｡•́‿•̀｡)۶", "(*^▽^*)", "(☆▽☆)",
+        "ヽ(✿ﾟ▽ﾟ)ノ", "(｡･ω･｡)ﾉ♡", "(*≧ω≦)", "(づ￣ 3￣)づ",
+        "٩(ˊᗜˋ*)و", "✧*｡٩(ˊᗜˋ*)و✧*｡", "(￣▽￣)ノ", "o(*￣▽￣*)ブ",
+        "(≧▽≦)/", "ヾ(≧▽≦*)o", "(●'◡'●)", "ヽ(•̀ω•́ )ゝ",
+    )
     total_steps = (
         1  # topology
         + (1 if sel["ioping"] else 0)
@@ -817,15 +821,15 @@ def run_benchmark_cli(args):
     )
     step_state = {"cur": 0}
 
-    def show_bar(msg_zh, msg_en, advance=1):
+    def show_bar(msg_zh, msg_en, advance=1, suffix=""):
         step_state["cur"] = min(total_steps, step_state["cur"] + advance)
         pct = int(round(step_state["cur"] * 100.0 / max(1, total_steps)))
         filled = int(round(24 * pct / 100.0))
         bar = "█" * filled + "░" * (24 - filled)
         ts = datetime.now(tz).strftime("%H:%M:%S")
-        emo = kaomojis[step_state["cur"] % len(kaomojis)]
         msg = msg_en if lang == "en" else msg_zh
-        print(f"{C_CYN}[{ts}]{C_RST} {C_GRN}[{bar}]{C_RST} {C_YEL}{pct:3d}%{C_RST} | {msg} {emo}", flush=True)
+        tail = f" {suffix}" if suffix else ""
+        print(f"{C_CYN}[{ts}]{C_RST} {C_GRN}[{bar}]{C_RST} {C_YEL}{pct:3d}%{C_RST} | {msg}{tail}", flush=True)
 
     show_bar("正在采集系统与块设备拓扑...", "Collecting system & block device topology...", advance=0)
     plan = calc_adaptive_plan(args.target, args.minutes)
@@ -941,7 +945,8 @@ def run_benchmark_cli(args):
         show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance=1)
 
     thorough_cleanup(work_dir, args.target, do_trim=True)
-    show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1)
+    end_emo = random.choice(end_kaomojis)
+    show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1, suffix=end_emo)
 
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,

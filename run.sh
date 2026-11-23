@@ -69,12 +69,21 @@ cat << 'BANNER'
 ╚═════╝ ╚═╝╚══════╝╚═╝  ╚═╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝      ╚═╝   
 BANNER
 
+START_KAOMOJIS=(
+    '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧' '( •̀ ω •́ )✧' '(๑•̀ㅂ•́)و✧' 'ヾ(•ω•`)o'
+    '(o´ω`o)ﾉ' '٩(｡•́‿•̀｡)۶' '(*^▽^*)' '(☆▽☆)'
+    'ヽ(✿ﾟ▽ﾟ)ノ' '(｡･ω･｡)ﾉ♡' '(*≧ω≦)' '(づ￣ 3￣)づ'
+    '٩(ˊᗜˋ*)و' '✧*｡٩(ˊᗜˋ*)و✧*｡' '(￣▽￣)ノ' 'o(*￣▽￣*)ブ'
+    '(≧▽≦)/' 'ヾ(≧▽≦*)o' "(●'◡'●)" 'ヽ(•̀ω•́ )ゝ'
+)
+START_EMO="${START_KAOMOJIS[$((RANDOM % ${#START_KAOMOJIS[@]}))]}"
+
 # 1. Language Selection at Startup
 if [[ -z "$LANG_CODE" ]]; then
     if [[ "$AUTO_YES" == "1" ]]; then
         LANG_CODE="zh"
     else
-        LANG_ANS=$(read_tty "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Select Language / 选择语言 [1=简体中文 (默认), 2=English]: ")
+        LANG_ANS=$(read_tty "Select Language / 选择语言 [1=简体中文 (默认), 2=English]: ")
         if [[ "$LANG_ANS" == "2" || "$LANG_ANS" =~ ^[Ee][Nn]$ ]]; then
             LANG_CODE="en"
         else
@@ -84,10 +93,10 @@ if [[ -z "$LANG_CODE" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral) ( •̀ ω •́ )✧${RESET}"
+    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min · 1h Ephemeral) ${START_EMO}${RESET}"
     echo -e "${GREEN}Version:${RESET} ${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}Command:${RESET} bash <(curl -sL ${SITE_URL})"
 else
-    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）( •̀ ω •́ )✧${RESET}"
+    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算 · 报告 1 小时自动销毁）${START_EMO}${RESET}"
     echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
 fi
 
@@ -133,9 +142,9 @@ if [[ ! -d "$TARGET_DIR" || ! -w "$TARGET_DIR" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}[Cleanup] Sweeping stale temporary files before benchmark... (ง •̀_•́)ง${RESET}"
+    echo -e "${CYAN}[Cleanup] Sweeping stale temporary files before benchmark...${RESET}"
 else
-    echo -e "${CYAN}[环境清理] 正在彻底清理测试前残留临时文件... (ง •̀_•́)ง${RESET}"
+    echo -e "${CYAN}[环境清理] 正在彻底清理测试前残留临时文件...${RESET}"
 fi
 rm -rf "$WORK_DIR" 2>/dev/null || true
 find /tmp -maxdepth 1 -name 'diskquality_core_*.py' ! -name "diskquality_core_$$.py" -delete 2>/dev/null || true
@@ -146,16 +155,16 @@ USED_PCT=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { if ($2 > 0) printf "%.1f", ($3 * 
 IS_OVER=$(awk -v u="$USED_PCT" 'BEGIN { print (u > 65.0) ? 1 : 0 }')
 if [[ "$IS_OVER" == "1" ]]; then
     if [[ "$LANG_CODE" == "en" ]]; then
-        echo -e "${RED}[Abort] Disk usage is ${USED_PCT}% (> 65%). Insufficient disk space, benchmark automatically cancelled (；′⌒\`)${RESET}"
+        echo -e "${RED}[Abort] Disk usage is ${USED_PCT}% (> 65%). Insufficient disk space, benchmark automatically cancelled.${RESET}"
     else
-        echo -e "${RED}[终止] 当前硬盘占用 ${USED_PCT}% (> 65%)，硬盘空间不足，已自动取消运行 (；′⌒\`)${RESET}"
+        echo -e "${RED}[终止] 当前硬盘占用 ${USED_PCT}% (> 65%)，硬盘空间不足，已自动取消运行${RESET}"
     fi
     exit 1
 else
     if [[ "$LANG_CODE" == "en" ]]; then
-        echo -e "${GREEN}[✔] Disk pre-scan passed (used ${USED_PCT}% ≤ 65%) (๑•̀ㅂ•́)و✧${RESET}"
+        echo -e "${GREEN}[✔] Disk pre-scan passed (used ${USED_PCT}% ≤ 65%)${RESET}"
     else
-        echo -e "${GREEN}[✔] 硬盘空间预检通过（当前占用 ${USED_PCT}% ≤ 65%）(๑•̀ㅂ•́)و✧${RESET}"
+        echo -e "${GREEN}[✔] 硬盘空间预检通过（当前占用 ${USED_PCT}% ≤ 65%）${RESET}"
     fi
 fi
 
@@ -180,7 +189,7 @@ if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
         INSTALL_ANS=$( [[ "$AUTO_YES" == "1" ]] && echo "y" || read_tty "是否同意自动安装上述缺失依赖？(不同意将自动退出脚本) [y/N]：" )
     fi
     if [[ ! "$INSTALL_ANS" =~ ^[Yy]$ ]]; then
-        [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Exit] Installation declined. Exited safely (´• ω •\`).${RESET}" || echo -e "${RED}[退出] 用户未同意安装缺失依赖，脚本已安全退出 (´• ω •\`).${RESET}"
+        [[ "$LANG_CODE" == "en" ]] && echo -e "${RED}[Exit] Installation declined. Exited safely.${RESET}" || echo -e "${RED}[退出] 用户未同意安装缺失依赖，脚本已安全退出。${RESET}"
         exit 1
     fi
     if command -v apt-get >/dev/null 2>&1; then
@@ -195,7 +204,7 @@ if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
         exit 1
     fi
 else
-    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[✔] Path & dependencies verified ヾ(•ω•\`)o${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过 ヾ(•ω•\`)o${RESET}"
+    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[✔] Path & dependencies verified${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过${RESET}"
 fi
 echo ""
 
@@ -219,7 +228,7 @@ if [[ "$LANG_CODE" == "en" ]]; then
     RUN_NET=$(ask_yn "Run Global Connectivity & Bulk Download Throughput? [y/n]: ")
     RUN_IPQ=$(ask_yn "Run IP Quality, Platform Unlock & Denial Probability? [y/n]: ")
     RUN_META=$(ask_yn "Run Filesystem Metadata (10,000 files) & Lifetime Diagnostics? [y/n]: ")
-    echo -e "\n${CYAN}>>> All set! Launching DiskQuality benchmark engine... ٩(｡•́‿•̀｡)۶${RESET}"
+    echo -e "\n${CYAN}>>> All set! Launching DiskQuality benchmark engine...${RESET}"
 else
     RUN_IOPING=$(ask_yn "运行 底层延迟基线测试 (ioping)？（回车默认 'y'）[y/n]：")
     RUN_MATRIX=$(ask_yn "运行 FIO 14项合成性能矩阵测试？（回车默认 'y'）[y/n]：")
@@ -229,7 +238,7 @@ else
     RUN_NET=$(ask_yn "运行 国际互联延迟与大文件下载吞吐测试？（回车默认 'y'）[y/n]：")
     RUN_IPQ=$(ask_yn "运行 IP 质量、平台解锁与被拒绝访问概率评估？（回车默认 'y'）[y/n]：")
     RUN_META=$(ask_yn "运行 文件系统元数据 (10,000 小文件) 与通电寿命溯源？（回车默认 'y'）[y/n]：")
-    echo -e "\n${CYAN}>>> 选定完毕，正在启动 DiskQuality 测评引擎... ٩(｡•́‿•̀｡)۶${RESET}"
+    echo -e "\n${CYAN}>>> 选定完毕，正在启动 DiskQuality 测评引擎...${RESET}"
 fi
 
 curl -fsSL "${SITE_URL}/core.py" -o "$TMP_CORE"
