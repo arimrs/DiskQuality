@@ -12,7 +12,7 @@ An ultra-lightweight, bilingual (**English / 简体中文**), purely objective L
 - **Comprehensive PT / Storage / Backup Coverage (9 Dimensions)**: Covers Disk Topology, `ioping` latency, FIO 14-item Direct I/O matrix, **Small-Block High-Concurrency I/O** (PT seeding / piece hashing / multi-stream backup / 4K burst), production `fsync`, 50%-capacity endurance + per-minute `iostat`, 10k-file metadata + SMART/Ext4 lifetime, **Global Connectivity & Bulk Download Throughput**, and **IP Quality, Platform Access & Empirical Access Denial Probability**.
 - **Pure Objective Metrics**: Zero subjective recommendations or tuning opinions — raw, reproducible numbers only.
 - **Interactive Module Selection**: Choose language at startup (`zh` / `en`), pre-flight path & dependency check (exits cleanly if installation is declined), and NodeQuality-style `[y/n]` module toggles (skipped sections are rendered as bold red **`???`**).
-- **Paginated Web Report & Enhanced Readability**: 6-page interactive paginated report viewer (`← Prev` / `Next →` buttons + keyboard `←`/`→` arrows + Full Panorama view) with enlarged high-contrast typography (`15.5px` / `26px` line height), zero-persistence `/tmp` storage with **1-hour TTL auto-destroy**, client-side Canvas PNG export, and one-click **Copy Text / NodeSeek (strict 4-colon tabs) / Markdown / HD PNG / SVG** buttons.
+- **Paginated Web Report & Enhanced Readability**: 6-page interactive paginated report viewer (`← Prev` / `Next →` buttons + keyboard `←`/`→` arrows + Full Panorama view) with enlarged high-contrast typography (`15.5px` / `26px` line height), zero-persistence `/tmp` storage with **1-hour TTL auto-destroy**, client-side Canvas PNG export, and one-click **Copy Text / NodeSeek  / Markdown / HD PNG / SVG** buttons.
 
 ---
 
@@ -25,17 +25,16 @@ bash <(curl -sL https://test.sakurado.top)
 ```
 
 Optional CLI flags:
-- `-l en` / `-l zh`: Pre-select English or Simplified Chinese
 - `-m 20`: Total time budget in minutes (default: `20`)
 - `-d /path`: Target mount directory (default: `/`)
 - `-y`: Non-interactive mode (auto-accept all modules)
 
 ---
 
-## Benchmark Dimensions (v1.0.3)
+## Benchmark Dimensions
 
 1. **System & Block Device Topology**: Virtualization, OS/kernel, CPU/RAM/Swap, disk model, capacity, `ROTA`, I/O scheduler, `write_cache`, `read_ahead_kb`, sector size, TRIM/Discard.
-2. **Latency Baseline (`ioping`)**: Direct random seek, Page Cache read, and `fsync` sync write (`min / avg / max / mdev`).
+2. **Latency Baseline **: Direct random seek, Page Cache read, and `fsync` sync write (`min / avg / max / mdev`).
 3. **FIO 14-Item Synthetic Matrix (`libaio`, `direct=1`)**: Sequential 1MB R/W (`QD=1`, `QD=32×4`), Random 4KB R/W (`QD=1`, `QD=16`, `QD=64×4`), Random 8K/16K 70/30, Sequential 128K 50/50, and Buffered 1M 50/50 (`direct=0`) with throughput, IOPS, p95, and p99 latency.
 4. **Small-Block High-Concurrency I/O (PT / Backup)**:
    - `PT_SEED_16K_32T` (16KB 80/20 R/W, 32 threads, `QD=4`) — multi-peer PT seeding & downloading
