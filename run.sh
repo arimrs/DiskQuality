@@ -237,16 +237,16 @@ ask_yn() {
 
 if [[ "$LANG_CODE" == "en" ]]; then
     echo -e "${CYAN}[Disk Profile] Capacity ${DISK_TOTAL_GB} GB (${MEDIA_EN}) · 50% Stress File ≈ ${STRESS_EST_GB} GB${RESET}"
-    RUN_CORE=$(ask_yn "1/4 Run Disk Performance Suite (ioping + FIO 14-item + fsync + PT/Backup Concurrency, ~${EST_CORE_MIN}m)? [y/n]: ")
-    RUN_SUSTAINED=$(ask_yn "2/4 Run 50% Adaptive Capacity Endurance (${STRESS_EST_GB} GB) + iostat (~${EST_SUST_MIN}m)? [y/n]: ")
-    RUN_NETIP=$(ask_yn "3/4 Run Global Connectivity, Bulk Download & IP Quality / Denial Risk (~0.5m)? [y/n]: ")
-    RUN_META=$(ask_yn "4/4 Run Filesystem Metadata (10,000 files) & SMART / Ext4 Lifetime (~0.3m)? [y/n]: ")
+    RUN_CORE=$(ask_yn "1/4 Run Disk Performance Suite (ioping + FIO 14-item + fsync + PT/Backup Concurrency, ~${EST_CORE_MIN}m) (default y) [Y/n]: ")
+    RUN_SUSTAINED=$(ask_yn "2/4 Run 50% Adaptive Capacity Endurance (${STRESS_EST_GB} GB) + iostat (~${EST_SUST_MIN}m) (default y) [Y/n]: ")
+    RUN_NETIP=$(ask_yn "3/4 Run Global Connectivity, Bulk Download & IP Quality / Denial Risk (~0.5m) (default y) [Y/n]: ")
+    RUN_META=$(ask_yn "4/4 Run Filesystem Metadata (10,000 files) & SMART / Ext4 Lifetime (~0.3m) (default y) [Y/n]: ")
 else
     echo -e "${CYAN}[硬盘画像] 容量 ${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 50% 自适应压测文件 ≈ ${STRESS_EST_GB} GB${RESET}"
-    RUN_CORE=$(ask_yn "1/4 运行 综合硬盘性能组（ioping 延迟 + FIO 14项 + 生产 fsync + PT/备份多并发，约 ${EST_CORE_MIN} 分钟）[y/n]：")
-    RUN_SUSTAINED=$(ask_yn "2/4 运行 50% 容量自适应持久压测（${STRESS_EST_GB} GB）+ 逐分钟 iostat（约 ${EST_SUST_MIN} 分钟）[y/n]：")
-    RUN_NETIP=$(ask_yn "3/4 运行 国际互联延迟、大文件下行与 IP 质量 / 被拒访问概率（约 30 秒）[y/n]：")
-    RUN_META=$(ask_yn "4/4 运行 文件系统元数据（10,000 小文件）与 SMART / Ext4 通电寿命（约 20 秒）[y/n]：")
+    RUN_CORE=$(ask_yn "1/4 运行 综合硬盘性能组（ioping 延迟 + FIO 14项 + 生产 fsync + PT/备份多并发，约 ${EST_CORE_MIN} 分钟）（回车默认 y）[Y/n]：")
+    RUN_SUSTAINED=$(ask_yn "2/4 运行 50% 容量自适应持久压测（${STRESS_EST_GB} GB）+ 逐分钟 iostat（约 ${EST_SUST_MIN} 分钟）（回车默认 y）[Y/n]：")
+    RUN_NETIP=$(ask_yn "3/4 运行 国际互联延迟、大文件下行与 IP 质量 / 被拒访问概率（约 30 秒）（回车默认 y）[Y/n]：")
+    RUN_META=$(ask_yn "4/4 运行 文件系统元数据（10,000 小文件）与 SMART / Ext4 通电寿命（约 20 秒）（回车默认 y）[Y/n]：")
 fi
 
 RUN_IOPING="$RUN_CORE"; RUN_MATRIX="$RUN_CORE"; RUN_PROD="$RUN_CORE"; RUN_CONC="$RUN_CORE"
