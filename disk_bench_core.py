@@ -699,16 +699,29 @@ def run_benchmark_cli(args):
     tz = timezone(timedelta(hours=8)) if lang == "zh" else timezone.utc
     start_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S " + ("CST" if lang == "zh" else "UTC"))
 
+    def prog(msg_zh, msg_en):
+        ts = datetime.now(tz).strftime("%H:%M:%S")
+        print(f"{C_CYN}[{ts}]{C_RST} {msg_en if lang == 'en' else msg_zh}", flush=True)
+
     sel = {k: getattr(args, k).lower() == "y" for k in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta")}
+    prog("[1/9] 正在采集系统与块设备拓扑...", "[1/9] Collecting system & block device topology...")
     plan = calc_adaptive_plan(args.target, args.minutes)
     topo = collect_system_topology(args.target)
+    prog(
+        f"      目标容量 {plan['disk_total_gb']} GB | 50% 自适应压测文件 {plan['stress_file_gb']} GB | 预算 {args.minutes:.0f} 分钟",
+        f"      Disk {plan['disk_total_gb']} GB | 50% Adaptive Stress File {plan['stress_file_gb']} GB | Budget {args.minutes:.0f} min",
+    )
 
-    ioping_res = run_ioping_tests(work_dir) if sel["ioping"] else None
+    ioping_res = None
+    if sel["ioping"]:
+        prog("[2/9] 正在运行底层延迟基线测试 (ioping)...", "[2/9] Running latency baseline (ioping)...")
+        ioping_res = run_ioping_tests(work_dir)
     mfile, sfile = os.path.join(work_dir, "matrix.bin"), os.path.join(work_dir, "stress_50pct.bin")
     rt, msz = plan["matrix_item_sec"], plan["matrix_file_gb"]
 
     matrix_res = None
     if sel["matrix"]:
+        prog(f"[3/9] 正在运行 FIO 14 项合成性能矩阵 ({msz} GB, 每项 {rt}s)...", f"[3/9] Running FIO 14-item synthetic matrix ({msz} GB, {rt}s each)...")
         specs = [
             ("SEQ1M_R_Q1", "read", "1M", 1, 1, 1, None, None), ("SEQ1M_R_Q32", "read", "1M", 32, 4, 1, None, None),
             ("SEQ1M_W_Q1", "write", "1M", 1, 1, 1, None, None), ("SEQ1M_W_Q32", "write", "1M", 32, 4, 1, None, None),
@@ -718,36 +731,55 @@ def run_benchmark_cli(args):
             ("RND8K_70_30", "randrw", "8K", 16, 2, 1, 70, None), ("RND16K_70_30", "randrw", "16K", 16, 2, 1, 70, None),
             ("SEQ128K_50_50", "rw", "128K", 16, 2, 1, 50, None), ("BUF1M_50_50", "rw", "1M", 16, 2, 0, 50, None),
         ]
-        matrix_res = [run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs) for (n, rw, bs, qd, nj, d, mix, fs) in specs]
+        matrix_res = []
+        for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(specs, 1):
+            print(f"      -> FIO Matrix [{idx}/{len(specs)}] {n} ...", flush=True)
+            matrix_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
 
     prod_res = None
     if sel["prod"]:
+        prog("[4/9] 正在运行生产模型与 fsync 事务刷盘测试...", "[4/9] Running production workloads & fsync commit...")
         pspecs = [
             ("OLTP_8K_Q32", "randrw", "8K", 32, 2, 1, 70, None), ("WEB_16K_Q8", "randrw", "16K", 8, 2, 1, 50, None),
             ("WAL_4K_FSYNC1", "write", "4K", 1, 1, 1, None, 1), ("CONG_4K_FSYNC4", "randwrite", "4K", 32, 2, 1, None, 4),
         ]
-        prod_res = [run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs) for (n, rw, bs, qd, nj, d, mix, fs) in pspecs]
+        prod_res = []
+        for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(pspecs, 1):
+            print(f"      -> Production [{idx}/{len(pspecs)}] {n} ...", flush=True)
+            prod_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
 
     conc_res = None
     if sel["concurrency"]:
+        prog("[5/9] 正在运行小量多并发 I/O 压测 (PT 做种/校验/并发备份)...", "[5/9] Running small-block high-concurrency I/O (PT/Backup)...")
         cspecs = [
             ("PT_SEED_16K_32T",  "randread", "16K",  4, 32, 1, None, None),
             ("PT_HASH_256K_16T", "read",     "256K", 4, 16, 1, None, None),
             ("BACKUP_64K_16T",   "randrw",   "64K",  4, 16, 1, 50,   None),
             ("BURST_4K_32T",     "randrw",   "4K",   1, 32, 1, 70,   None),
         ]
-        conc_res = [run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs) for (n, rw, bs, qd, nj, d, mix, fs) in cspecs]
+        conc_res = []
+        for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(cspecs, 1):
+            print(f"      -> Concurrency [{idx}/{len(cspecs)}] {n} ...", flush=True)
+            conc_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
 
     try: os.remove(mfile)
     except Exception: pass
 
     sustained_res = None
     if sel["sustained"]:
+        seq_m = round(plan["sustained_seq_sec"] / 60.0, 1)
+        mix_m = round(plan["sustained_mix_sec"] / 60.0, 1)
+        prog(
+            f"[6/9] 正在运行 50% 容量 ({plan['stress_file_gb']} GB) 持久压测 + iostat (顺序写 {seq_m}分 + 随机混合 {mix_m}分)...",
+            f"[6/9] Running 50% capacity ({plan['stress_file_gb']} GB) endurance stress + iostat ({seq_m}m seq + {mix_m}m mixed)...",
+        )
         iostat_log = os.path.join(work_dir, "iostat_raw.log")
         dev_short = os.path.basename(topo["base_dev"])
         io_proc = subprocess.Popen(f"iostat -dxm {dev_short} 5 > '{iostat_log}' 2>&1", shell=True)
         try:
+            print(f"      -> Phase A: Sequential Write ({plan['stress_file_gb']} GB, {plan['sustained_seq_sec']}s) ...", flush=True)
             sw = run_fio_job("SUSTAINED_50PCT_SEQ_W", sfile, plan["stress_file_gb"], "write", "1M", 16, 1, plan["sustained_seq_sec"], 1)
+            print(f"      -> Phase B: Random Mixed 30/70 ({plan['stress_file_gb']} GB, {plan['sustained_mix_sec']}s) ...", flush=True)
             ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], 1, 30)
         finally:
             io_proc.terminate()
@@ -757,10 +789,23 @@ def run_benchmark_cli(args):
             except Exception: pass
         sustained_res = {"seq_write": sw, "rand_mixed": ms, "timeline": parse_iostat_minutes(iostat_log, dev_short, plan["sustained_seq_sec"] // 60)}
 
-    net_res = run_global_network_tests() if sel["network"] else None
-    ipq_res = run_ip_quality_tests() if sel["ip_quality"] else None
-    meta_res = run_metadata_bench(work_dir) if sel["meta"] else None
-    life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"]) if sel["meta"] else None
+    net_res = None
+    if sel["network"]:
+        prog("[7/9] 正在运行全球 8 大单播节点互联延迟与大文件下行测试...", "[7/9] Running 8-hub global TCP latency & bulk download tests...")
+        net_res = run_global_network_tests()
+
+    ipq_res = None
+    if sel["ip_quality"]:
+        prog("[8/9] 正在运行 IP 质量、25 端口与 10 大平台可达性探测...", "[8/9] Running IP quality, Port 25 & 10-platform reachability probes...")
+        ipq_res = run_ip_quality_tests()
+
+    meta_res, life_res = None, None
+    if sel["meta"]:
+        prog("[9/9] 正在运行 10,000 小文件元数据测试与 SMART/Ext4 寿命读取...", "[9/9] Running 10,000-file metadata & SMART/Ext4 lifetime diagnostics...")
+        meta_res = run_metadata_bench(work_dir)
+        life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"])
+
+    prog("正在清理临时文件并生成报告...", "Cleaning up temporary files and generating report...")
 
     shutil.rmtree(work_dir, ignore_errors=True)
     run_cmd(f"fstrim '{args.target}' 2>/dev/null || true")
