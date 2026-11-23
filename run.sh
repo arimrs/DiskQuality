@@ -17,12 +17,31 @@ TARGET_DIR="/"
 MINUTES="20"
 AUTO_YES="0"
 LANG_CODE=""
+PROFILE_MODE="auto"
+GB_CLI=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -y|--yes) AUTO_YES="1"; shift ;;
         -m|--minutes) MINUTES="$2"; shift 2 ;;
         -d|--dir) TARGET_DIR="$2"; shift 2 ;;
         -l|--lang) LANG_CODE="$2"; shift 2 ;;
+        -p|--profile) PROFILE_MODE="$2"; shift 2 ;;
+        --gb|--geekbench) GB_CLI="$2"; shift 2 ;;
+        -h|--help)
+            cat << 'HELP'
+DiskQuality Usage:
+  bash <(curl -sL https://test.sakurado.top) [options]
+
+Options:
+  -l, --lang <zh|en>                         Language (zh or en)
+  -d, --dir <path>                           Target mount directory (default: /)
+  -m, --minutes <N>                          Total time budget in minutes (default: 20)
+  -p, --profile <auto|dedicated|vds|vps|container>  Server architecture scheduling profile (default: auto)
+  --gb <gb5|gb6|skip>                        CPU benchmark mode (default: gb5)
+  -y, --yes                                  Non-interactive mode (accept defaults)
+HELP
+            exit 0
+            ;;
         *) shift ;;
     esac
 done
@@ -168,7 +187,19 @@ else
     fi
 fi
 
-# 4. Pre-flight Dependency Check
+# 4. Platform Detection & Pre-flight Dependency Check (Dedicated / VDS / KVM / LXC / OpenVZ / Multi-Arch)
+ARCH_NAME=$(uname -m 2>/dev/null || echo "unknown")
+VIRT_RAW=$(systemd-detect-virt 2>/dev/null || echo "unknown")
+IS_CONTAINER="0"
+if [[ -f /.dockerenv ]] || [[ -d /proc/vz && ! -d /proc/bc ]] || [[ "$VIRT_RAW" =~ ^(lxc|openvz|docker|podman|systemd-nspawn|wsl)$ ]]; then
+    IS_CONTAINER="1"
+    PLAT_TAG="CONTAINER (${VIRT_RAW}/${ARCH_NAME})"
+elif [[ "$VIRT_RAW" == "none" ]] && ! grep -q ' hypervisor' /proc/cpuinfo 2>/dev/null; then
+    PLAT_TAG="DEDICATED (Bare-Metal/${ARCH_NAME})"
+else
+    PLAT_TAG="VM (${VIRT_RAW}/${ARCH_NAME})"
+fi
+
 MISSING_CMDS=()
 MISSING_PKGS=()
 check_dep() {
@@ -176,9 +207,11 @@ check_dep() {
         MISSING_CMDS+=("$1"); MISSING_PKGS+=("$2")
     fi
 }
-check_dep "fio" "fio"; check_dep "ioping" "ioping"; check_dep "iostat" "sysstat"
-check_dep "smartctl" "smartmontools"; check_dep "tune2fs" "e2fsprogs"
+check_dep "fio" "fio"; check_dep "ioping" "ioping"
 check_dep "python3" "python3"; check_dep "curl" "curl"
+if [[ "$IS_CONTAINER" == "0" ]]; then
+    check_dep "iostat" "sysstat"; check_dep "smartctl" "smartmontools"; check_dep "tune2fs" "e2fsprogs"
+fi
 
 if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
     if [[ "$LANG_CODE" == "en" ]]; then
@@ -199,22 +232,30 @@ if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
         dnf install -y -q "${MISSING_PKGS[@]}"
     elif command -v yum >/dev/null 2>&1; then
         yum install -y -q "${MISSING_PKGS[@]}"
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache "${MISSING_PKGS[@]}"
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm "${MISSING_PKGS[@]}"
+    elif command -v zypper >/dev/null 2>&1; then
+        zypper -n install "${MISSING_PKGS[@]}"
     else
-        echo -e "${RED}[Error] Unsupported package manager: ${MISSING_PKGS[*]}${RESET}"
+        echo -e "${RED}[Error] Unsupported package manager. Please install manually: ${MISSING_PKGS[*]}${RESET}"
         exit 1
     fi
 else
-    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[✔] Path & dependencies verified${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过${RESET}"
+    [[ "$LANG_CODE" == "en" ]] && echo -e "${GREEN}[✔] Path & dependencies verified (${PLAT_TAG})${RESET}" || echo -e "${GREEN}[✔] 路径与全部测评依赖检查通过（${PLAT_TAG}）${RESET}"
 fi
 echo ""
 
-# 5. Disk-Aware Time Estimation & 4 Merged Interactive Module Groups (Default 'y')
+# 5. Disk-Aware Time Estimation & 5 Merged Interactive Module Groups (Default 'y' / GB5)
 DISK_TOTAL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $2 / 1048576.0 }')
 DISK_AVAIL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $4 / 1048576.0 }')
-STRESS_EST_GB=$(awk -v t="$DISK_TOTAL_GB" -v a="$DISK_AVAIL_GB" 'BEGIN { r=t*0.5; c=a*0.8; g=(r<c?r:c); if(g<1) g=1; printf "%.1f", g }')
-DEV_SRC=$(findmnt -n -o SOURCE "$TARGET_DIR" 2>/dev/null || true)
+STRESS_EST_GB=$(awk -v t="$DISK_TOTAL_GB" -v a="$DISK_AVAIL_GB" 'BEGIN { r=t*0.5; c=a*0.8; g=(r<c?r:c); if(g>2000) g=2000; if(g<1) g=1; printf "%.1f", g }')
+DEV_SRC=$(findmnt -n -o SOURCE "$TARGET_DIR" 2>/dev/null || df -P "$TARGET_DIR" | awk 'NR==2{print $1}')
 BASE_DEV=$(lsblk -no PKNAME "$DEV_SRC" 2>/dev/null | head -n1 || true)
-[[ -z "$BASE_DEV" && -n "$DEV_SRC" ]] && BASE_DEV=$(basename "$DEV_SRC" | sed 's/[0-9]*$//')
+if [[ -z "$BASE_DEV" && "$DEV_SRC" == /dev/* ]]; then
+    BASE_DEV=$(basename "$DEV_SRC" | sed -E 's/^(nvme[0-9]+n[0-9]+|mmcblk[0-9]+|loop[0-9]+)p[0-9]+$/\1/; s/[0-9]+$//')
+fi
 ROTA_VAL=$(cat "/sys/block/${BASE_DEV}/queue/rotational" 2>/dev/null || echo "0")
 if [[ "$ROTA_VAL" == "1" ]]; then
     MEDIA_ZH="HDD/机械盘"; MEDIA_EN="HDD"
@@ -261,9 +302,10 @@ else
     fi
 fi
 
+[[ -n "$GB_CLI" ]] && GB_ANS="$GB_CLI"
 case "$GB_ANS" in
     2|gb6|GB6) GB_MODE="gb6" ;;
-    3|n|N|skip|SKIP) GB_MODE="skip" ;;
+    3|n|N|skip|SKIP|0) GB_MODE="skip" ;;
     *) GB_MODE="gb5" ;;
 esac
 
@@ -274,9 +316,9 @@ EST_LOW=$(awk -v c="$RUN_CORE" -v cm="$EST_CORE_MIN" -v s="$RUN_SUSTAINED" -v sm
 EST_HIGH=$(awk -v lo="$EST_LOW" -v r="$ROTA_VAL" 'BEGIN { f=(r=="1"?1.35:1.2); hi=lo*f; if(hi<lo+0.5) hi=lo+0.5; printf "%.1f", hi }')
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "\n${CYAN}>>> Estimated Total Runtime: ~${EST_LOW}–${EST_HIGH} min (${DISK_TOTAL_GB} GB ${MEDIA_EN}, CPU: ${GB_MODE}). Launching engine...${RESET}"
+    echo -e "\n${CYAN}>>> Estimated Total Runtime: ~${EST_LOW}–${EST_HIGH} min (${PLAT_TAG} · ${DISK_TOTAL_GB} GB ${MEDIA_EN} · CPU: ${GB_MODE}). Launching engine...${RESET}"
 else
-    echo -e "\n${CYAN}>>> 预计总执行时间：约 ${EST_LOW}–${EST_HIGH} 分钟（基于 ${DISK_TOTAL_GB} GB ${MEDIA_ZH} · CPU: ${GB_MODE} 估算），正在启动测评引擎...${RESET}"
+    echo -e "\n${CYAN}>>> 预计总执行时间：约 ${EST_LOW}–${EST_HIGH} 分钟（${PLAT_TAG} · ${DISK_TOTAL_GB} GB ${MEDIA_ZH} · CPU: ${GB_MODE}），正在启动测评引擎...${RESET}"
 fi
 
 curl -fsSL "${SITE_URL}/core.py" -o "$TMP_CORE"
@@ -286,5 +328,5 @@ python3 "$TMP_CORE" \
     --ioping "$RUN_IOPING" --matrix "$RUN_MATRIX" --prod "$RUN_PROD" \
     --concurrency "$RUN_CONC" --sustained "$RUN_SUSTAINED" \
     --network "$RUN_NET" --ip_quality "$RUN_IPQ" --meta "$RUN_META" \
-    --geekbench "$GB_MODE" \
+    --geekbench "$GB_MODE" --profile "$PROFILE_MODE" \
     --site-url "$SITE_URL" --upload-url "${SITE_URL}/api/v1/record"

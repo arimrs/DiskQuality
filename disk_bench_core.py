@@ -84,9 +84,12 @@ I18N = {
         "k_dev": "设备属性：              ", "dev_val": "{dev} ({fs}) | ROTA={rota} | 调度={sched}",
         "k_cache": "缓存与对齐：            ", "cache_val": "write_cache={wc} | RA={ra}KB | 扇区={sec} | TRIM={trim}",
         "trim_yes": "支持", "trim_no": "不支持",
-        "k_spec": "压测文件规格：          ", "spec_val": "50% 自适应压测文件 = {sgb} GB (短矩阵 {mgb} GB, Direct I/O)",
+        "k_spec": "压测文件规格：          ", "spec_val": "50% 自适应压测文件 = {sgb} GB (短矩阵 {mgb} GB, {ioe} direct={dir})",
         "k_gb": "CPU 跑分 ({ver})：   ", "k_gb_skip": "CPU 跑分 (Geekbench)：  ", "k_gb_url": "跑分详情：              ",
         "gb_sc": "单核", "gb_mc": "多核",
+        "k_oscore": "超售指数 (越低越好)：   ",
+        "os_sub": "基准: 独服 {media} (0=独服水平, 100=极重超售) · 吞吐落差 {d_bw} | 4K落差 {d_4k} | 尾延迟 {d_lat} | 缓外掉速 {d_drop}",
+        "os_t0": "极低/接近独服", "os_t1": "轻度共享", "os_t2": "中度超售", "os_t3": "重度超售",
         "s2": "二、底层访问与同步延迟基线 (ioping)",
         "k_res": "检测结果：              ",
         "k_seek": "Direct 随机寻道：       ", "k_cread": "Page Cache 缓存读：     ", "k_swrite": "持久化同步写 (fsync)：  ",
@@ -133,9 +136,12 @@ I18N = {
         "k_dev": "Block Device:           ", "dev_val": "{dev} ({fs}) | ROTA={rota} | Sched={sched}",
         "k_cache": "Cache & Alignment:      ", "cache_val": "write_cache={wc} | RA={ra}KB | Sector={sec} | TRIM={trim}",
         "trim_yes": "Supported", "trim_no": "Unsupported",
-        "k_spec": "Benchmark File Size:    ", "spec_val": "50% Adaptive Stress File = {sgb} GB (Matrix {mgb} GB, Direct I/O)",
+        "k_spec": "Benchmark File Size:    ", "spec_val": "50% Adaptive Stress File = {sgb} GB (Matrix {mgb} GB, {ioe} direct={dir})",
         "k_gb": "CPU Score ({ver}): ", "k_gb_skip": "CPU Score (Geekbench):  ", "k_gb_url": "Score Details:          ",
         "gb_sc": "Single-Core", "gb_mc": "Multi-Core",
+        "k_oscore": "Oversell Index (Lower↓):",
+        "os_sub": "Ref: Dedicated {media} (0=Dedicated, 100=Severe) · BW {d_bw} | 4K {d_4k} | TailLat {d_lat} | Drop {d_drop}",
+        "os_t0": "Minimal / Near-Dedicated", "os_t1": "Light Sharing", "os_t2": "Moderate Overselling", "os_t3": "Heavy Overselling",
         "s2": "2. Latency Baseline (ioping)",
         "k_res": "Result:                 ",
         "k_seek": "Direct Random Seek:     ", "k_cread": "Page Cache Read:        ", "k_swrite": "Sync Write (fsync):     ",
@@ -248,18 +254,132 @@ def run_cmd(cmd, timeout=120):
             _ACTIVE_PROCS.remove(p)
 
 
-def collect_system_topology(target_dir="/"):
-    _, virt, _ = run_cmd("systemd-detect-virt 2>/dev/null || echo unknown")
+def detect_platform_profile(virt_raw, cpu_model, cpu_cores, mem_mb):
+    """Auto-classify server platform: dedicated (Bare-Metal), vds, container (LXC/OpenVZ/Docker), or vps."""
+    v = (virt_raw or "unknown").strip().lower()
+    if os.path.exists("/.dockerenv"):
+        return "container", "docker"
+    if os.path.exists("/proc/vz") and not os.path.exists("/proc/bc"):
+        return "container", "openvz"
+    if any(k in v for k in ("lxc", "openvz", "docker", "podman", "systemd-nspawn", "wsl", "vz")):
+        return "container", v
+    _, hv_flag, _ = run_cmd("grep -q ' hypervisor' /proc/cpuinfo 2>/dev/null && echo 1 || echo 0")
+    if v in ("none", "", "unknown") and hv_flag != "1":
+        return "dedicated", "bare-metal"
+    # Distinguish VDS (dedicated CPU passthrough / high-spec physical model) from standard shared VPS
+    cm = (cpu_model or "").lower()
+    is_passthrough = bool(cm) and ("qemu" not in cm) and ("virtual" not in cm) and ("common kvm" not in cm)
+    if v in ("kvm", "xen", "vmware", "microsoft", "bhyve", "qemu") and is_passthrough and int(cpu_cores or 1) >= 2 and int(mem_mb or 0) >= 3500:
+        return "vds", f"{v} (VDS)"
+    return "vps", v or "unknown"
+
+
+def probe_fio_capabilities(work_dir):
+    """Auto-probe FIO ioengine & O_DIRECT support for LXC/OpenVZ/ZFS/OverlayFS/Dedicated compatibility."""
+    test_f = os.path.join(work_dir, ".probe.bin")
+    q_f = shlex.quote(test_f)
+    for ioe, direct in (("libaio", 1), ("psync", 1), ("psync", 0)):
+        rc, _, _ = run_cmd(f"fio --name=probe --filename={q_f} --size=1M --ioengine={ioe} --direct={direct} --rw=write --bs=4k --runtime=1 --output-format=json", timeout=15)
+        try: os.remove(test_f)
+        except Exception: pass
+        if rc == 0:
+            return ioe, direct
+    return "psync", 0
+
+
+def calc_overselling_index(topo, matrix_res, prod_res, sustained_res):
+    """
+    Objective 0-100 Overselling Index (Lower is better; 0 = Dedicated Server reference baseline).
+    Anchored to standard Dedicated Server NVMe / SATA SSD / Enterprise HDD baselines.
+    """
+    rota = str(topo.get("rotational", "0")).strip()
+    bdev = (topo.get("base_dev", "") + " " + topo.get("disk_model", "")).lower()
+    if rota == "1":
+        media = "HDD"
+        ref_bw, ref_4k, ref_p99 = 160.0, 180.0, 35.0
+    elif "nvme" in bdev:
+        media = "NVMe"
+        ref_bw, ref_4k, ref_p99 = 1500.0, 60000.0, 2.0
+    else:
+        media = "SSD"
+        ref_bw, ref_4k, ref_p99 = 450.0, 25000.0, 4.0
+
+    # Extract measured metrics
+    burst_seq_bw, rnd4k_iops, p99_vals = None, None, []
+    if matrix_res:
+        by_name = {r.get("name"): r for r in matrix_res if not r.get("error")}
+        for k in ("SEQ1M_W_Q32", "SEQ1M_R_Q32", "SEQ1M_W_Q1"):
+            if k in by_name:
+                val = max(by_name[k].get("w_bw_mbs", 0), by_name[k].get("r_bw_mbs", 0))
+                if val > 0:
+                    burst_seq_bw = max(burst_seq_bw or 0.0, val)
+        for k in ("RND4K_W_Q64", "RND4K_R_Q64", "RND4K_W_Q16", "RND4K_R_Q16"):
+            if k in by_name:
+                iv = max(by_name[k].get("w_iops", 0), by_name[k].get("r_iops", 0))
+                if iv > 0:
+                    rnd4k_iops = max(rnd4k_iops or 0.0, iv)
+        for k in ("RND4K_W_Q16", "RND4K_R_Q16", "RND8K_70_30"):
+            if k in by_name:
+                pv = max(by_name[k].get("w_p99_ms", 0), by_name[k].get("r_p99_ms", 0))
+                if pv > 0: p99_vals.append(pv)
+
+    if prod_res:
+        for r in prod_res:
+            if not r.get("error"):
+                pv = max(r.get("w_p99_ms", 0), r.get("r_p99_ms", 0))
+                if pv > 0: p99_vals.append(pv)
+
+    sust_bw = None
+    if sustained_res and isinstance(sustained_res.get("seq_write"), dict) and not sustained_res["seq_write"].get("error"):
+        sust_bw = sustained_res["seq_write"].get("w_bw_mbs", 0) or None
+
+    parts = []
+    d_bw = d_4k = d_lat = d_drop = "N/A"
+
+    if burst_seq_bw is not None:
+        s_bw = max(0.0, min(100.0, (1.0 - burst_seq_bw / ref_bw) * 100.0))
+        parts.append((0.30, s_bw))
+        d_bw = f"{s_bw:.0f}"
+    if rnd4k_iops is not None:
+        s_4k = max(0.0, min(100.0, (1.0 - rnd4k_iops / ref_4k) * 100.0))
+        parts.append((0.25, s_4k))
+        d_4k = f"{s_4k:.0f}"
+    if p99_vals:
+        avg_p99 = sum(p99_vals) / len(p99_vals)
+        s_lat = max(0.0, min(100.0, ((avg_p99 - ref_p99) / (ref_p99 * 8.0)) * 100.0))
+        parts.append((0.20, s_lat))
+        d_lat = f"{s_lat:.0f}"
+    if sust_bw is not None:
+        base_cmp = burst_seq_bw if (burst_seq_bw and burst_seq_bw > 0) else ref_bw
+        s_drop = max(0.0, min(100.0, (1.0 - sust_bw / max(1.0, base_cmp)) * 100.0))
+        parts.append((0.25, s_drop))
+        d_drop = f"{s_drop:.0f}"
+
+    if not parts:
+        return None
+
+    w_sum = sum(w for w, _ in parts)
+    score = round(sum(w * v for w, v in parts) / w_sum, 1)
+    tier = "t0" if score <= 15.0 else ("t1" if score <= 35.0 else ("t2" if score <= 60.0 else "t3"))
+    return {
+        "score": score, "tier": tier, "media": media,
+        "d_bw": d_bw, "d_4k": d_4k, "d_lat": d_lat, "d_drop": d_drop,
+    }
+
+
+def collect_system_topology(target_dir="/", forced_profile="auto"):
+    _, virt_raw, _ = run_cmd("systemd-detect-virt 2>/dev/null || echo unknown")
     _, os_rel, _ = run_cmd("grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '\"'")
     _, kernel, _ = run_cmd("uname -r")
     _, arch, _ = run_cmd("uname -m")
     _, loadavg, _ = run_cmd("awk '{print $1\", \"$2\", \"$3}' /proc/loadavg")
-    _, cpu_model, _ = run_cmd("lscpu 2>/dev/null | awk -F: '/Model name/{gsub(/^[ \\t]+/,\"\",$2); print $2; exit}'")
-    _, cpu_cores, _ = run_cmd("nproc")
+    _, cpu_model, _ = run_cmd("lscpu 2>/dev/null | awk -F: '/Model name/{gsub(/^[ \\t]+/,\"\",$2); print $2; exit}' || awk -F: '/model name|Hardware/{gsub(/^[ \\t]+/,\"\",$2); print $2; exit}' /proc/cpuinfo")
+    _, cpu_cores, _ = run_cmd("nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo")
     _, cpu_mhz, _ = run_cmd("awk -F: '/cpu MHz/{gsub(/^[ \\t]+/,\"\",$2); printf \"%.3fMHz\", $2; exit}' /proc/cpuinfo")
+    _, mem_total_mb, _ = run_cmd("free -m | awk '/^Mem:/{print $2}'")
     _, mem_line, _ = run_cmd("free -m | awk '/^Mem:/{printf \"%dM (Used %dM / Avail %dM)\", $2, $3, $7}'")
     _, swap_line, _ = run_cmd("free -m | awk '/^Swap:/{if($2>0) printf \"%dM (Used %dM)\", $2, $3; else print \"0M\"}'")
-    _, pub_ip, _ = run_cmd("curl -s4m 4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'")
+    _, pub_ip, _ = run_cmd("curl -s4m 4 https://api.ipify.org 2>/dev/null || curl -s6m 4 https://api64.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'")
     raw_ip = pub_ip.strip() if pub_ip else ""
     if re.match(r'^\d+\.\d+\.\d+\.\d+$', raw_ip):
         masked_ip = re.sub(r'^(\d+\.\d+)\.\d+\.\d+$', r'\1.*.*', raw_ip)
@@ -268,49 +388,69 @@ def collect_system_topology(target_dir="/"):
     else:
         masked_ip = "Unknown"
 
+    profile, virt_disp = detect_platform_profile(virt_raw, cpu_model, cpu_cores, mem_total_mb or 0)
+    if forced_profile in ("dedicated", "vds", "vps", "container"):
+        profile = forced_profile
+
     q_target = shlex.quote(target_dir)
-    _, dev_src, _ = run_cmd(f"findmnt -n -o SOURCE {q_target}")
-    _, fs_type, _ = run_cmd(f"findmnt -n -o FSTYPE {q_target}")
+    _, dev_src, _ = run_cmd(f"findmnt -n -o SOURCE {q_target} 2>/dev/null || df -P {q_target} | awk 'NR==2{{print $1}}'")
+    _, fs_type, _ = run_cmd(f"findmnt -n -o FSTYPE {q_target} 2>/dev/null || df -T {q_target} | awk 'NR==2{{print $2}}'")
     _, base_dev, _ = run_cmd(f"lsblk -no PKNAME {shlex.quote(dev_src)} 2>/dev/null | head -n1")
-    if not base_dev: base_dev = os.path.basename(dev_src).rstrip("0123456789")
-    sb = f"/sys/block/{base_dev}"
-    _, model, _ = run_cmd(f"cat {sb}/device/model 2>/dev/null || echo 'Virtual Disk'")
-    _, rota, _ = run_cmd(f"cat {sb}/queue/rotational 2>/dev/null || echo '?'")
-    _, sched, _ = run_cmd(f"cat {sb}/queue/scheduler 2>/dev/null || echo '?'")
-    _, ra_kb, _ = run_cmd(f"cat {sb}/queue/read_ahead_kb 2>/dev/null || echo '?'")
-    _, wcache, _ = run_cmd(f"cat {sb}/queue/write_cache 2>/dev/null || echo '?'")
-    _, log_s, _ = run_cmd(f"cat {sb}/queue/logical_block_size 2>/dev/null || echo '512'")
-    _, phy_s, _ = run_cmd(f"cat {sb}/queue/physical_block_size 2>/dev/null || echo '512'")
-    _, disc, _ = run_cmd(f"cat {sb}/queue/discard_granularity 2>/dev/null || echo '0'")
+    if not base_dev and dev_src.startswith("/dev/"):
+        bn = os.path.basename(dev_src)
+        if re.match(r'^(nvme\d+n\d+|mmcblk\d+|loop\d+)p\d+$', bn):
+            base_dev = re.sub(r'p\d+$', '', bn)
+        else:
+            base_dev = bn.rstrip("0123456789")
+    sb = f"/sys/block/{base_dev}" if base_dev and os.path.exists(f"/sys/block/{base_dev}") else ""
+    if sb:
+        _, model, _ = run_cmd(f"cat {sb}/device/model 2>/dev/null || echo 'Physical/Virtual Disk'")
+        _, rota, _ = run_cmd(f"cat {sb}/queue/rotational 2>/dev/null || echo '?'")
+        _, sched, _ = run_cmd(f"cat {sb}/queue/scheduler 2>/dev/null || echo '?'")
+        _, ra_kb, _ = run_cmd(f"cat {sb}/queue/read_ahead_kb 2>/dev/null || echo '?'")
+        _, wcache, _ = run_cmd(f"cat {sb}/queue/write_cache 2>/dev/null || echo '?'")
+        _, log_s, _ = run_cmd(f"cat {sb}/queue/logical_block_size 2>/dev/null || echo '512'")
+        _, phy_s, _ = run_cmd(f"cat {sb}/queue/physical_block_size 2>/dev/null || echo '512'")
+        _, disc, _ = run_cmd(f"cat {sb}/queue/discard_granularity 2>/dev/null || echo '0'")
+    else:
+        model, rota, sched, ra_kb, wcache, log_s, phy_s, disc = (
+            f"Container/Virtual ({fs_type or 'fs'})", "?", "host-managed", "?", "?", "512", "512", "0"
+        )
 
     return {
-        "masked_ip": masked_ip, "virt": virt, "arch": arch,
+        "masked_ip": masked_ip, "virt": virt_disp, "profile": profile, "arch": arch,
         "os": f"{os_rel} {kernel}".strip(), "loadavg": loadavg,
-        "cpu_model": cpu_model or "Unknown CPU", "cpu_cores": cpu_cores, "cpu_mhz": cpu_mhz,
-        "mem": mem_line, "swap": swap_line, "mount_dev": dev_src, "base_dev": f"/dev/{base_dev}",
-        "fs_type": fs_type, "disk_model": model.strip(), "rotational": rota, "scheduler": sched,
+        "cpu_model": cpu_model or f"{arch} CPU", "cpu_cores": cpu_cores or "1", "cpu_mhz": cpu_mhz or "N/A",
+        "mem": mem_line, "swap": swap_line, "mount_dev": dev_src or "unknown",
+        "base_dev": f"/dev/{base_dev}" if base_dev else "virtual", "has_block_dev": bool(sb),
+        "fs_type": fs_type or "unknown", "disk_model": model.strip(), "rotational": rota, "scheduler": sched,
         "read_ahead_kb": ra_kb, "write_cache": wcache, "sector": f"{log_s}B / {phy_s}B",
         "trim_supported": int(disc or 0) > 0,
     }
 
 
-def collect_poweron_lifetime(mount_dev, base_dev):
-    _, smart_out, _ = run_cmd(f"smartctl -a {shlex.quote(base_dev)} 2>&1 | head -n 30")
-    smart_avail = "Unavailable" not in smart_out and "failed" not in smart_out.lower() and bool(smart_out)
-    poh = None
-    if smart_avail:
-        m = re.search(r'Power_On_Hours.*?(\d+)\s*$', smart_out, re.M)
-        if m: poh = m.group(1)
-    _, t2fs, _ = run_cmd(f"tune2fs -l {shlex.quote(mount_dev)} 2>/dev/null")
-    cr = re.search(r'Filesystem created:\s*(.+)', t2fs)
-    mc = re.search(r'Mount count:\s*(\d+)', t2fs)
-    lw = re.search(r'Lifetime writes:\s*(.+)', t2fs)
+def collect_poweron_lifetime(mount_dev, base_dev, fs_type="ext4"):
+    smart_avail, poh, smart_status = False, None, "Unavailable (Virtual/Container/Shielded)"
+    if base_dev and base_dev.startswith("/dev/") and os.path.exists(base_dev):
+        _, smart_out, _ = run_cmd(f"smartctl -a {shlex.quote(base_dev)} 2>&1 | head -n 60")
+        if smart_out and "Unavailable" not in smart_out and "failed" not in smart_out.lower() and "Permission denied" not in smart_out:
+            smart_avail = True
+            smart_status = "Available"
+            m = re.search(r'(?:Power_On_Hours|Power On Hours).*?([\d,]+)\s*$', smart_out, re.M)
+            if m: poh = m.group(1).replace(",", "")
+    cr_s = mc_s = lw_s = f"N/A ({fs_type})"
+    if (fs_type or "").startswith("ext") and mount_dev.startswith("/dev/"):
+        _, t2fs, _ = run_cmd(f"tune2fs -l {shlex.quote(mount_dev)} 2>/dev/null")
+        cr = re.search(r'Filesystem created:\s*(.+)', t2fs)
+        mc = re.search(r'Mount count:\s*(\d+)', t2fs)
+        lw = re.search(r'Lifetime writes:\s*(.+)', t2fs)
+        cr_s = cr.group(1).strip() if cr else "N/A"
+        mc_s = mc.group(1).strip() if mc else "N/A"
+        lw_s = lw.group(1).strip() if lw else "N/A"
     return {
         "smart_available": smart_avail, "smart_power_on_hours": poh,
-        "smart_raw_status": "Available" if smart_avail else "Unavailable (Virtual/Shielded)",
-        "fs_created": cr.group(1).strip() if cr else "N/A",
-        "mount_count": mc.group(1).strip() if mc else "N/A",
-        "lifetime_writes": lw.group(1).strip() if lw else "N/A",
+        "smart_raw_status": smart_status,
+        "fs_created": cr_s, "mount_count": mc_s, "lifetime_writes": lw_s,
     }
 
 
@@ -320,6 +460,9 @@ def run_geekbench(mode, work_dir):
     if mode not in ("gb5", "gb6"):
         return None
     _, arch, _ = run_cmd("uname -m")
+    if arch not in ("x86_64", "amd64", "aarch64", "arm64"):
+        ver_label = "Geekbench 5" if mode == "gb5" else "Geekbench 6"
+        return {"version": ver_label, "single_core": f"Unsupported({arch})", "multi_core": f"Unsupported({arch})", "url": ""}
     is_arm = arch in ("aarch64", "arm64")
     if mode == "gb5":
         ver_label = "Geekbench 5"
@@ -395,10 +538,10 @@ def run_ioping_tests(work_dir):
     return res
 
 
-def run_fio_job(name, filepath, size_gb, rw, bs, iodepth, numjobs, runtime, direct=1, rwmixread=None, fsync=None):
+def run_fio_job(name, filepath, size_gb, rw, bs, iodepth, numjobs, runtime, direct=1, rwmixread=None, fsync=None, ioengine="libaio"):
     cmd = (
         f"fio --name={shlex.quote(name)} --filename={shlex.quote(filepath)} --size={int(size_gb * 1024)}M "
-        f"--ioengine=libaio --direct={direct} --rw={rw} --bs={bs} "
+        f"--ioengine={shlex.quote(ioengine)} --direct={direct} --rw={rw} --bs={bs} "
         f"--iodepth={iodepth} --numjobs={numjobs} --runtime={runtime} --time_based "
         f"--group_reporting --output-format=json"
     )
@@ -582,7 +725,7 @@ def build_sections(data, lang=None, site_url=None):
         f"     {L['time_ver'].format(t=data['report_time'], v=data['version'])}",
         "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
         L["s1"],
-        f"{C_CYN}{L['k_virt']}{C_GRN}{t['virt']} ({t['arch']}){C_RST}",
+        f"{C_CYN}{L['k_virt']}{C_GRN}{t['virt']} · {t.get('profile','vps').upper()} ({t['arch']}){C_RST}",
         f"{C_CYN}{L['k_os']}{C_GRN}{t['os']}{C_RST}",
         f"{C_CYN}{L['k_cpu']}{C_INV} {t['cpu_model']} {C_RST}",
         f"                        {C_INV} ╚═ {L['cpu_sub'].format(cores=t['cpu_cores'], mhz=t['cpu_mhz'], load=t['loadavg'])} {C_RST}",
@@ -590,8 +733,18 @@ def build_sections(data, lang=None, site_url=None):
         f"{C_CYN}{L['k_disk']}{C_INV} {L['disk_val'].format(model=t['disk_model'], tot=p['disk_total_gb'], used=p['disk_used_gb'], avail=p['disk_avail_gb'])} {C_RST}",
         f"{C_CYN}{L['k_dev']}{C_GRN}{L['dev_val'].format(dev=t['mount_dev'], fs=t['fs_type'], rota=t['rotational'], sched=t['scheduler'])}{C_RST}",
         f"{C_CYN}{L['k_cache']}{C_GRN}{L['cache_val'].format(wc=t['write_cache'], ra=t['read_ahead_kb'], sec=t['sector'], trim=L['trim_yes'] if t['trim_supported'] else L['trim_no'])}{C_RST}",
-        f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'])}{C_RST}",
+        f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'], ioe=p.get('ioengine','libaio'), dir=p.get('direct',1))}{C_RST}",
     ]
+    os_idx = data.get("overselling")
+    if os_idx:
+        t_col = {"t0": C_BG_GRN, "t1": C_BG_GRN, "t2": C_BG_YEL, "t3": C_BG_RED}.get(os_idx["tier"], C_BG_YEL)
+        t_lbl = L.get(f"os_{os_idx['tier']}", os_idx["tier"])
+        sec_overview.append(
+            f"{C_CYN}{L['k_oscore']}{t_col} {os_idx['score']:.1f} / 100 · {t_lbl} {C_RST}"
+        )
+        sec_overview.append(
+            f"                        {C_GRN}╚═ {L['os_sub'].format(media=os_idx['media'], d_bw=os_idx['d_bw'], d_4k=os_idx['d_4k'], d_lat=os_idx['d_lat'], d_drop=os_idx['d_drop'])}{C_RST}"
+        )
     gb = data.get("geekbench")
     if not gb:
         sec_overview.append(f"{C_CYN}{L['k_gb_skip']}{skip}")
@@ -946,10 +1099,20 @@ def run_benchmark_cli(args):
 
     show_bar("正在采集系统与块设备拓扑...", "Collecting system & block device topology...", advance=0)
     plan = calc_adaptive_plan(args.target, args.minutes)
-    topo = collect_system_topology(args.target)
+    topo = collect_system_topology(args.target, forced_profile=getattr(args, "profile", "auto"))
+    ioe, io_direct = probe_fio_capabilities(work_dir)
+    plan["ioengine"] = ioe
+    plan["direct"] = io_direct
+    # Platform-specific adaptive scheduling: cap huge dedicated arrays cleanly & protect container pids/ulimit
+    prof = topo.get("profile", "vps")
+    if prof == "dedicated":
+        plan["matrix_file_gb"] = min(8.0, max(plan["matrix_file_gb"], 4.0))
+        plan["stress_file_gb"] = min(plan["stress_file_gb"], 2000.0)
+    elif prof == "container":
+        plan["matrix_file_gb"] = min(plan["matrix_file_gb"], 2.0)
     show_bar(
-        f"拓扑完成 · 目标盘 {plan['disk_total_gb']} GB (已用 {used_pct:.1f}%) · 50% 压测文件 {plan['stress_file_gb']} GB",
-        f"Topology ready · Disk {plan['disk_total_gb']} GB (used {used_pct:.1f}%) · 50% Stress File {plan['stress_file_gb']} GB",
+        f"拓扑完成 · {prof.upper()} ({topo['virt']}/{topo['arch']}) · {plan['disk_total_gb']} GB · {ioe} direct={io_direct}",
+        f"Topology ready · {prof.upper()} ({topo['virt']}/{topo['arch']}) · {plan['disk_total_gb']} GB · {ioe} direct={io_direct}",
         advance=1,
     )
 
@@ -961,48 +1124,49 @@ def run_benchmark_cli(args):
 
     mfile, sfile = os.path.join(work_dir, "matrix.bin"), os.path.join(work_dir, "stress_50pct.bin")
     rt, msz = plan["matrix_item_sec"], plan["matrix_file_gb"]
+    max_jobs = 16 if prof == "container" else 32
 
     matrix_res = None
     if sel["matrix"]:
         specs = [
-            ("SEQ1M_R_Q1", "read", "1M", 1, 1, 1, None, None), ("SEQ1M_R_Q32", "read", "1M", 32, 4, 1, None, None),
-            ("SEQ1M_W_Q1", "write", "1M", 1, 1, 1, None, None), ("SEQ1M_W_Q32", "write", "1M", 32, 4, 1, None, None),
-            ("RND4K_R_Q1", "randread", "4K", 1, 1, 1, None, None), ("RND4K_R_Q16", "randread", "4K", 16, 1, 1, None, None),
-            ("RND4K_R_Q64", "randread", "4K", 64, 4, 1, None, None), ("RND4K_W_Q1", "randwrite", "4K", 1, 1, 1, None, None),
-            ("RND4K_W_Q16", "randwrite", "4K", 16, 1, 1, None, None), ("RND4K_W_Q64", "randwrite", "4K", 64, 4, 1, None, None),
-            ("RND8K_70_30", "randrw", "8K", 16, 2, 1, 70, None), ("RND16K_70_30", "randrw", "16K", 16, 2, 1, 70, None),
-            ("SEQ128K_50_50", "rw", "128K", 16, 2, 1, 50, None), ("BUF1M_50_50", "rw", "1M", 16, 2, 0, 50, None),
+            ("SEQ1M_R_Q1", "read", "1M", 1, 1, io_direct, None, None), ("SEQ1M_R_Q32", "read", "1M", 32, 4, io_direct, None, None),
+            ("SEQ1M_W_Q1", "write", "1M", 1, 1, io_direct, None, None), ("SEQ1M_W_Q32", "write", "1M", 32, 4, io_direct, None, None),
+            ("RND4K_R_Q1", "randread", "4K", 1, 1, io_direct, None, None), ("RND4K_R_Q16", "randread", "4K", 16, 1, io_direct, None, None),
+            ("RND4K_R_Q64", "randread", "4K", 64, 4, io_direct, None, None), ("RND4K_W_Q1", "randwrite", "4K", 1, 1, io_direct, None, None),
+            ("RND4K_W_Q16", "randwrite", "4K", 16, 1, io_direct, None, None), ("RND4K_W_Q64", "randwrite", "4K", 64, 4, io_direct, None, None),
+            ("RND8K_70_30", "randrw", "8K", 16, 2, io_direct, 70, None), ("RND16K_70_30", "randrw", "16K", 16, 2, io_direct, 70, None),
+            ("SEQ128K_50_50", "rw", "128K", 16, 2, io_direct, 50, None), ("BUF1M_50_50", "rw", "1M", 16, 2, 0, 50, None),
         ]
         matrix_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(specs, 1):
             show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] 正在测 {n}...", f"FIO Matrix [{idx}/{len(specs)}] {n}...", advance=0)
-            matrix_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            matrix_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
             show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] {n} 完成", f"FIO Matrix [{idx}/{len(specs)}] {n} done", advance=1)
 
     prod_res = None
     if sel["prod"]:
         pspecs = [
-            ("OLTP_8K_Q32", "randrw", "8K", 32, 2, 1, 70, None), ("WEB_16K_Q8", "randrw", "16K", 8, 2, 1, 50, None),
-            ("WAL_4K_FSYNC1", "write", "4K", 1, 1, 1, None, 1), ("CONG_4K_FSYNC4", "randwrite", "4K", 32, 2, 1, None, 4),
+            ("OLTP_8K_Q32", "randrw", "8K", 32, 2, io_direct, 70, None), ("WEB_16K_Q8", "randrw", "16K", 8, 2, io_direct, 50, None),
+            ("WAL_4K_FSYNC1", "write", "4K", 1, 1, io_direct, None, 1), ("CONG_4K_FSYNC4", "randwrite", "4K", 32, 2, io_direct, None, 4),
         ]
         prod_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(pspecs, 1):
             show_bar(f"生产模型 [{idx}/{len(pspecs)}] 正在测 {n}...", f"Production [{idx}/{len(pspecs)}] {n}...", advance=0)
-            prod_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            prod_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
             show_bar(f"生产模型 [{idx}/{len(pspecs)}] {n} 完成", f"Production [{idx}/{len(pspecs)}] {n} done", advance=1)
 
     conc_res = None
     if sel["concurrency"]:
         cspecs = [
-            ("PT_SEED_16K_32T",  "randread", "16K",  4, 32, 1, None, None),
-            ("PT_HASH_256K_16T", "read",     "256K", 4, 16, 1, None, None),
-            ("BACKUP_64K_16T",   "randrw",   "64K",  4, 16, 1, 50,   None),
-            ("BURST_4K_32T",     "randrw",   "4K",   1, 32, 1, 70,   None),
+            ("PT_SEED_16K_32T",  "randread", "16K",  4, min(32, max_jobs), io_direct, None, None),
+            ("PT_HASH_256K_16T", "read",     "256K", 4, min(16, max_jobs), io_direct, None, None),
+            ("BACKUP_64K_16T",   "randrw",   "64K",  4, min(16, max_jobs), io_direct, 50,   None),
+            ("BURST_4K_32T",     "randrw",   "4K",   1, min(32, max_jobs), io_direct, 70,   None),
         ]
         conc_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(cspecs, 1):
             show_bar(f"小量多并发 [{idx}/{len(cspecs)}] 正在测 {n}...", f"Concurrency [{idx}/{len(cspecs)}] {n}...", advance=0)
-            conc_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs))
+            conc_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
             show_bar(f"小量多并发 [{idx}/{len(cspecs)}] {n} 完成", f"Concurrency [{idx}/{len(cspecs)}] {n} done", advance=1)
 
     try: os.remove(mfile)
@@ -1013,30 +1177,34 @@ def run_benchmark_cli(args):
         seq_m = round(plan["sustained_seq_sec"] / 60.0, 1)
         mix_m = round(plan["sustained_mix_sec"] / 60.0, 1)
         iostat_log = os.path.join(work_dir, "iostat_raw.log")
-        dev_short = os.path.basename(topo["base_dev"])
-        io_proc = subprocess.Popen(f"iostat -dxm {shlex.quote(dev_short)} 5 > {shlex.quote(iostat_log)} 2>&1", shell=True, start_new_session=True)
-        _ACTIVE_PROCS.append(io_proc)
+        dev_short = os.path.basename(topo["base_dev"]) if topo.get("has_block_dev") else ""
+        io_proc = None
+        if dev_short:
+            io_proc = subprocess.Popen(f"iostat -dxm {shlex.quote(dev_short)} 5 > {shlex.quote(iostat_log)} 2>&1", shell=True, start_new_session=True)
+            _ACTIVE_PROCS.append(io_proc)
         try:
             show_bar(
                 f"50% 容量持久压测 阶段 A 顺序写 ({plan['stress_file_gb']} GB, {seq_m} 分钟)...",
                 f"50% Endurance Phase A Seq Write ({plan['stress_file_gb']} GB, {seq_m} min)...",
                 advance=0,
             )
-            sw = run_fio_job("SUSTAINED_50PCT_SEQ_W", sfile, plan["stress_file_gb"], "write", "1M", 16, 1, plan["sustained_seq_sec"], 1)
+            sw = run_fio_job("SUSTAINED_50PCT_SEQ_W", sfile, plan["stress_file_gb"], "write", "1M", 16, 1, plan["sustained_seq_sec"], io_direct, ioengine=ioe)
             show_bar("50% 容量持久压测 阶段 A 完成，进入阶段 B 随机混合...", "50% Endurance Phase A done, starting Phase B Mixed...", advance=1)
-            ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], 1, 30)
+            ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], io_direct, 30, ioengine=ioe)
             show_bar("50% 容量持久压测 阶段 B 完成", "50% Endurance Phase B completed", advance=1)
         finally:
-            try: os.killpg(os.getpgid(io_proc.pid), signal.SIGKILL)
-            except Exception:
-                try: io_proc.kill()
+            if io_proc is not None:
+                try: os.killpg(os.getpgid(io_proc.pid), signal.SIGKILL)
+                except Exception:
+                    try: io_proc.kill()
+                    except Exception: pass
+                try: io_proc.wait(timeout=3)
                 except Exception: pass
-            try: io_proc.wait(timeout=3)
-            except Exception: pass
-            if io_proc in _ACTIVE_PROCS: _ACTIVE_PROCS.remove(io_proc)
+                if io_proc in _ACTIVE_PROCS: _ACTIVE_PROCS.remove(io_proc)
             try: os.remove(sfile)
             except Exception: pass
-        sustained_res = {"seq_write": sw, "rand_mixed": ms, "timeline": parse_iostat_minutes(iostat_log, dev_short, plan["sustained_seq_sec"] // 60)}
+        tl = parse_iostat_minutes(iostat_log, dev_short, plan["sustained_seq_sec"] // 60) if dev_short else []
+        sustained_res = {"seq_write": sw, "rand_mixed": ms, "timeline": tl}
 
     net_res = None
     if sel["network"]:
@@ -1054,7 +1222,7 @@ def run_benchmark_cli(args):
     if sel["meta"]:
         show_bar("正在运行 10,000 小文件元数据与 SMART/Ext4 寿命读取...", "Running 10,000-file metadata & SMART/Ext4 lifetime...", advance=0)
         meta_res = run_metadata_bench(work_dir)
-        life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"])
+        life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"], fs_type=topo.get("fs_type", "ext4"))
         show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance=1)
 
     gb_res = None
@@ -1064,6 +1232,8 @@ def run_benchmark_cli(args):
         gb_res = run_geekbench(gb_mode, work_dir)
         show_bar(f"{gb_lbl} CPU 跑分完成", f"{gb_lbl} CPU benchmark completed", advance=1)
 
+    overselling_res = calc_overselling_index(topo, matrix_res, prod_res, sustained_res)
+
     thorough_cleanup(work_dir, args.target, do_trim=True)
     end_emo = random.choice(end_kaomojis)
     show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1, suffix=end_emo)
@@ -1071,7 +1241,7 @@ def run_benchmark_cli(args):
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,
         "report_time": start_str, "elapsed_min": round((time.time() - t_start) / 60.0, 2),
-        "selected": sel, "plan": plan, "topology": topo, "geekbench": gb_res,
+        "selected": sel, "plan": plan, "topology": topo, "geekbench": gb_res, "overselling": overselling_res,
         "lifetime": life_res, "ioping": ioping_res, "matrix": matrix_res,
         "production": prod_res, "concurrency": conc_res, "sustained": sustained_res,
         "network": net_res, "ip_quality": ipq_res, "metadata": meta_res,
@@ -1102,6 +1272,7 @@ def main():
     for mod in ("ioping", "matrix", "prod", "concurrency", "sustained", "network", "ip_quality", "meta"):
         ap.add_argument(f"--{mod}", default="y")
     ap.add_argument("--geekbench", default="gb5", choices=["gb5", "gb6", "skip"])
+    ap.add_argument("--profile", default="auto", choices=["auto", "dedicated", "vds", "vps", "container"])
     ap.add_argument("--site-url", default=DEFAULT_SITE_URL)
     ap.add_argument("--upload-url", default="")
     run_benchmark_cli(ap.parse_args())

@@ -28,7 +28,9 @@ bash <(curl -sL https://test.sakurado.top)
 - `-l zh` / `-l en`：预设简体中文或英文
 - `-m 20`：总测评时长预算（单位：分钟，默认 `20`）
 - `-d /path`：指定测评挂载路径（默认 `/`）
-- `-y`：非交互自动模式（全部模块默认选 `y`）
+- `-p auto|dedicated|vds|vps|container`：服务器架构调度模式（默认 `auto`，自动兼容独立服务器、VDS、KVM/Xen/VMware、LXC/OpenVZ/Docker 与多架构）
+- `--gb gb5|gb6|skip`：指定 CPU 跑分版本（默认 `gb5` 完整单核/多核）
+- `-y`：非交互自动模式（全部模块默认选 `y` / `gb5`）
 
 ---
 
