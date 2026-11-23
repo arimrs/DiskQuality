@@ -81,9 +81,19 @@ This project is built upon and inspired by the following outstanding open-source
 
 ---
 
-## Disclaimer & Usage Policy
+## Open-Source Usage Terms & Disclaimer
 
-1. **Completely Free · Modifications Welcome · No Paid Derivatives**: This project is **100% free and open-source**. Secondary development, forks, and modifications are welcome, provided attribution is retained. **Charging for, selling, paywalling, or commercially monetizing this project or any modified/derivative version of it is strictly prohibited.**
-2. **Disk Wear & Heavy I/O Warning**: This benchmark performs sustained Direct I/O writes up to 50% of total disk capacity (clamped to ≤ 80% of free space, and automatically cancelled if disk usage exceeds 65%). Only run it on servers where you are authorized to perform stress testing and understand the TBW wear and VPS provider ToS implications.
-3. **No Data Retention / No Warranty**: The ephemeral query server provides **no permanent storage**; all uploaded reports and generated views are automatically destroyed after **1 hour**. This software is provided "AS IS" without warranty of any kind.
-4. **Privacy**: Public IP addresses (IPv4/IPv6) in reports are automatically masked and hostnames are not recorded. Do not upload sensitive system information.
+### 1. Free to Use & Modify — No Paid Derivatives
+- This project is **100% free and open-source**.
+- **Secondary development and modification are welcome** for personal learning, research, and free community sharing, provided original attribution and this notice are retained.
+- **Strictly NO paid/commercial derivatives**: You may **NOT** sell this project or any modified/derivative version of it, charge fees for customized builds, licensing, paid benchmark services, or repackage it into any closed-source or profit-driven product.
+
+### 2. Strict Legal Compliance
+- **No Illegal Use**: It is **strictly prohibited** to use this project (or any derivative work) to violate any applicable local, national, or international laws and regulations — including, without limitation, unauthorized stress testing, maliciously exhausting third-party disk/bandwidth/compute resources, DoS/DDoS attacks, or interfering with computer information systems.
+- Users must ensure they only run this tool on servers they legally own or have explicit written authorization to test. All legal responsibilities and consequences arising from misuse are borne solely by the user; the author assumes zero liability.
+
+### 3. General Disclaimers
+1. **Disk Wear, Heavy I/O & Provider ToS**: This benchmark performs sustained Direct I/O writes up to 50% of total disk capacity (with a >65% pre-scan abort guard and ≤80% free-space clamp). You are solely responsible for evaluating SSD TBW wear, hardware impact, and your VPS provider's Terms of Service (ToS); any throttling, suspension, or data loss is at your own risk.
+2. **Zero Persistence & AS-IS Warranty**: The ephemeral query server provides **no permanent storage** — all uploaded reports and generated views are automatically destroyed after **1 hour**. This software is provided **"AS IS"** without warranty of any kind, express or implied (including merchantability, fitness for a particular purpose, or non-infringement). The author shall not be liable for any direct, indirect, incidental, special, or consequential damages.
+3. **Objective Metrics & Third-Party Services**: All outputs are raw objective measurements and do not constitute purchasing advice or performance guarantees. Upstream open-source tools and public test endpoints belong to their respective owners, who are solely responsible for their availability and accuracy.
+4. **Privacy**: Public IPv4/IPv6 addresses in reports are automatically masked (`x.x.*.*` / `xxxx:xxxx:*:*`) and hostnames are never uploaded. Do not manually attach sensitive personal or system information.
