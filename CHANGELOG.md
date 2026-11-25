@@ -1,5 +1,32 @@
 # Changelog / 更新日志
 
+## v1.0.7 (2026.11.25)
+### English
+- **Comprehensive Quantifiable Disk Score (`0–100` & Grade `S+`–`D`)**:
+  - Added weighted composite scoring across Sequential Throughput (20%), Random 4K IOPS (25%), Tail Latency & `fsync` (15%), High-Concurrency PT/Backup I/O (15%), 50% Sustained Endurance (15%), and Filesystem Metadata (10%), alongside the Dedicated-baseline Overselling Index (`0–100`, lower is better).
+- **Speed-Probe Calibrated ETA**:
+  - Added a quick 64 MB Direct I/O write/read pre-probe before module selection to calibrate estimated execution time based on actual measured disk speed and target capacity.
+- **Dedicated / VDS / Non-KVM & Multi-Arch Auto-Scheduling**:
+  - Added automatic platform classification (`Dedicated`, `VDS`, `VPS`, `LXC/OpenVZ/Docker`), FIO `ioengine`/`O_DIRECT` auto-fallback, NVMe/RAID/non-ext4 compatibility, and `apk`/`pacman`/`zypper` package manager support.
+- **Larger Dynamic-Width SVG Typography & Web-Only Specular Sheen**:
+  - Upgraded SVG report rendering to `17.5px` font (`29px` line-height) with dynamic auto-expanding width (`≥ 1140px`) and refined monospace/CJK typography so NodeSeek image embeds stay crisp and unclipped.
+  - Added a subtle cursor-reactive specular light effect exclusively on the web report viewer (zero effect on exported SVG/PNG images).
+  - Hardened Geekbench 5/6 HTML score parsing to reliably extract Single-Core and Multi-Core scores.
+
+### 简体中文
+- **新增硬盘综合量化评分（`0–100` 分与 `S+`–`D` 等级）**：
+  - 综合顺序吞吐（20%）、随机 4K IOPS（25%）、尾延迟与 `fsync`（15%）、高并发 PT/备份 I/O（15%）、50% 容量持久稳态（15%）及元数据吞吐（10%）输出客观加权总分与各分项指标，并与独立服务器基准超售指数（越低越好）并列展示。
+- **预热测速校准预计耗时**：
+  - 在交互选测前新增 64 MB 快速直写/读预热探测，结合实测读写速度与目标盘容量动态核算各模块与总执行时间。
+- **独立服务器 / VDS / 非 KVM 与多架构自适应调度**：
+  - 支持裸金属独服、VDS、KVM/Xen/VMware、LXC/OpenVZ/Docker 与多架构自动识别，内置 FIO 引擎与 `O_DIRECT` 自动降级、NVMe/非 ext4 兼容及 `apk`/`pacman`/`zypper` 包管理器支持。
+- **大字号自适应宽度图片渲染与网页端动态光影**：
+  - SVG 报告升级为 `17.5px` 大字号（`29px` 行高）、灵动等宽字体栈与动态自适应画布宽度（`≥ 1140px`），确保 NodeSeek 图片排版清晰完整无截断。
+  - 在线报告页新增随鼠标移动的柔和光影动态效果（仅网页端生效，不影响导出的 SVG/PNG 图片）。
+  - 增强 Geekbench 5/6 官方结果页解析正则，修复部分场景下单多核分数显示 `N/A` 的问题。
+
+---
+
 ## v1.0.6 (2026.11.23)
 ### English
 - **Full Geekbench 5 / Geekbench 6 CPU Benchmark (`Single-Core` & `Multi-Core`)**:

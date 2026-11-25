@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DiskQuality v1.0.6 — Bilingual PT / Storage / Backup VPS Objective Benchmark
+# DiskQuality v1.0.7 — Bilingual PT / Storage / Backup VPS Objective Benchmark
 # ==============================================================================
 set -euo pipefail
 
 SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
-SCRIPT_VERSION="v1.0.6"
-SCRIPT_UPDATED="2026.11.23"
+SCRIPT_VERSION="v1.0.7"
+SCRIPT_UPDATED="2026.11.25"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 CYAN='\033[1;36m'
@@ -259,12 +259,52 @@ fi
 ROTA_VAL=$(cat "/sys/block/${BASE_DEV}/queue/rotational" 2>/dev/null || echo "0")
 if [[ "$ROTA_VAL" == "1" ]]; then
     MEDIA_ZH="HDD/机械盘"; MEDIA_EN="HDD"
-    EST_CORE_MIN=5; EST_META_MIN=1
 else
     MEDIA_ZH="SSD/NVMe"; MEDIA_EN="SSD/NVMe"
-    EST_CORE_MIN=3; EST_META_MIN=0
 fi
-EST_SUST_MIN=$(awk -v m="$MINUTES" 'BEGIN { s=int(m*0.75); if(s<2) s=2; print s }')
+
+# Quick 64MB pre-test write/read speed probe for accurate ETA calculation (POSIX-compatible)
+mkdir -p "$WORK_DIR"
+PROBE_FILE="${WORK_DIR}/.speed_probe.bin"
+_parse_dd_mbs() {
+    python3 -c '
+import re, sys
+s = sys.stdin.read()
+m = re.search(r"([0-9.]+)\s*(GB|MB|kB|B)/s", s)
+if m:
+    v, u = float(m.group(1)), m.group(2)
+    if u == "GB": v *= 1024.0
+    elif u == "kB": v /= 1024.0
+    elif u == "B": v /= 1048576.0
+    print(f"{v:.1f}")
+' 2>/dev/null || true
+}
+PROBE_W_MBS=$(dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 oflag=direct 2>&1 | _parse_dd_mbs)
+[[ -z "$PROBE_W_MBS" ]] && PROBE_W_MBS=$(dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 conv=fdatasync 2>&1 | _parse_dd_mbs)
+PROBE_R_MBS=$(dd if="$PROBE_FILE" of=/dev/null bs=1M iflag=direct 2>&1 | _parse_dd_mbs)
+rm -f "$PROBE_FILE" 2>/dev/null || true
+[[ -z "$PROBE_W_MBS" ]] && PROBE_W_MBS="150.0"
+[[ -z "$PROBE_R_MBS" ]] && PROBE_R_MBS="$PROBE_W_MBS"
+
+# Compute realistic per-group ETA from measured write speed + disk size + time budget
+EST_CORE_MIN=$(awk -v w="$PROBE_W_MBS" -v m="$MINUTES" 'BEGIN {
+    alloc_min = (4096.0 / (w > 10 ? w : 10)) / 60.0;
+    if (alloc_min > 3.5) alloc_min = 3.5;
+    base = (m * 0.22) + alloc_min;
+    if (base < 2.0) base = 2.0;
+    if (base > 8.0) base = 8.0;
+    printf "%.1f", base;
+}')
+EST_SUST_MIN=$(awk -v w="$PROBE_W_MBS" -v sgb="$STRESS_EST_GB" -v m="$MINUTES" 'BEGIN {
+    budget = m * 0.75;
+    if (budget < 2.0) budget = 2.0;
+    fill_min = (sgb * 1024.0 / (w > 10 ? w : 10)) / 60.0;
+    # time_based FIO caps at budget, plus initial file allocation/setup overhead on slow disks
+    overhead = (fill_min > budget ? budget * 0.15 : fill_min * 0.10);
+    if (overhead > 2.5) overhead = 2.5;
+    printf "%.1f", budget + overhead;
+}')
+EST_META_MIN=$(awk -v w="$PROBE_W_MBS" 'BEGIN { printf "%.1f", (w < 120 ? 0.8 : 0.3) }')
 
 ask_yn() {
     local prompt="$1"
@@ -277,11 +317,11 @@ ask_yn() {
 }
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}[Disk Profile] Capacity ${DISK_TOTAL_GB} GB (${MEDIA_EN}) · 50% Stress File ≈ ${STRESS_EST_GB} GB${RESET}"
+    echo -e "${CYAN}[Disk Profile] Capacity ${DISK_TOTAL_GB} GB (${MEDIA_EN}) · Quick Probe: W ${PROBE_W_MBS} MB/s / R ${PROBE_R_MBS} MB/s · 50% Stress ≈ ${STRESS_EST_GB} GB${RESET}"
     RUN_CORE=$(ask_yn "1/5 Run Disk Performance Suite (ioping + FIO 14-item + fsync + PT/Backup Concurrency, ~${EST_CORE_MIN}m) (default y) [Y/n]: ")
     RUN_SUSTAINED=$(ask_yn "2/5 Run 50% Adaptive Capacity Endurance (${STRESS_EST_GB} GB) + iostat (~${EST_SUST_MIN}m) (default y) [Y/n]: ")
     RUN_NETIP=$(ask_yn "3/5 Run Global Connectivity, Bulk Download & IP Quality / Denial Risk (~0.5m) (default y) [Y/n]: ")
-    RUN_META=$(ask_yn "4/5 Run Filesystem Metadata (10,000 files) & SMART / Ext4 Lifetime (~0.3m) (default y) [Y/n]: ")
+    RUN_META=$(ask_yn "4/5 Run Filesystem Metadata (10,000 files) & SMART / Ext4 Lifetime (~${EST_META_MIN}m) (default y) [Y/n]: ")
     if [[ "$AUTO_YES" == "1" ]]; then
         GB_ANS="1"
     else
@@ -289,11 +329,11 @@ if [[ "$LANG_CODE" == "en" ]]; then
         GB_ANS="${GB_ANS:-1}"
     fi
 else
-    echo -e "${CYAN}[硬盘画像] 容量 ${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 50% 自适应压测文件 ≈ ${STRESS_EST_GB} GB${RESET}"
+    echo -e "${CYAN}[硬盘画像] 容量 ${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 实测预热：写 ${PROBE_W_MBS} MB/s / 读 ${PROBE_R_MBS} MB/s · 50% 压测 ≈ ${STRESS_EST_GB} GB${RESET}"
     RUN_CORE=$(ask_yn "1/5 运行 综合硬盘性能组（ioping 延迟 + FIO 14项 + 生产 fsync + PT/备份多并发，约 ${EST_CORE_MIN} 分钟）（回车默认 y）[Y/n]：")
     RUN_SUSTAINED=$(ask_yn "2/5 运行 50% 容量自适应持久压测（${STRESS_EST_GB} GB）+ 逐分钟 iostat（约 ${EST_SUST_MIN} 分钟）（回车默认 y）[Y/n]：")
     RUN_NETIP=$(ask_yn "3/5 运行 国际互联延迟、大文件下行与 IP 质量 / 被拒访问概率（约 30 秒）（回车默认 y）[Y/n]：")
-    RUN_META=$(ask_yn "4/5 运行 文件系统元数据（10,000 小文件）与 SMART / Ext4 通电寿命（约 20 秒）（回车默认 y）[Y/n]：")
+    RUN_META=$(ask_yn "4/5 运行 文件系统元数据（10,000 小文件）与 SMART / Ext4 通电寿命（约 ${EST_META_MIN} 分钟）（回车默认 y）[Y/n]：")
     if [[ "$AUTO_YES" == "1" ]]; then
         GB_ANS="1"
     else

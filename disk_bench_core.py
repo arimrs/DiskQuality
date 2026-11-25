@@ -27,7 +27,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.6 (2026.11.23)"
+VERSION = "v1.0.7 (2026.11.25)"
 DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
@@ -90,6 +90,8 @@ I18N = {
         "k_oscore": "超售指数 (越低越好)：   ",
         "os_sub": "基准: 独服 {media} (0=独服水平, 100=极重超售) · 吞吐落差 {d_bw} | 4K落差 {d_4k} | 尾延迟 {d_lat} | 缓外掉速 {d_drop}",
         "os_t0": "极低/接近独服", "os_t1": "轻度共享", "os_t2": "中度超售", "os_t3": "重度超售",
+        "k_dscore": "硬盘综合评分 (越高越好)：",
+        "ds_sub": "顺序 {s_seq} | 4K随机 {s_4k} | 延迟 {s_lat} | 高并发 {s_conc} | 持久稳态 {s_sust} | 元数据 {s_meta}",
         "s2": "二、底层访问与同步延迟基线 (ioping)",
         "k_res": "检测结果：              ",
         "k_seek": "Direct 随机寻道：       ", "k_cread": "Page Cache 缓存读：     ", "k_swrite": "持久化同步写 (fsync)：  ",
@@ -142,6 +144,8 @@ I18N = {
         "k_oscore": "Oversell Index (Lower↓):",
         "os_sub": "Ref: Dedicated {media} (0=Dedicated, 100=Severe) · BW {d_bw} | 4K {d_4k} | TailLat {d_lat} | Drop {d_drop}",
         "os_t0": "Minimal / Near-Dedicated", "os_t1": "Light Sharing", "os_t2": "Moderate Overselling", "os_t3": "Heavy Overselling",
+        "k_dscore": "Disk Score (Higher↑):   ",
+        "ds_sub": "Seq {s_seq} | 4K {s_4k} | Lat {s_lat} | Conc {s_conc} | Sust {s_sust} | Meta {s_meta}",
         "s2": "2. Latency Baseline (ioping)",
         "k_res": "Result:                 ",
         "k_seek": "Direct Random Seek:     ", "k_cread": "Page Cache Read:        ", "k_swrite": "Sync Write (fsync):     ",
@@ -367,6 +371,75 @@ def calc_overselling_index(topo, matrix_res, prod_res, sustained_res):
     }
 
 
+def calc_disk_score(topo, ioping_res, matrix_res, prod_res, conc_res, sustained_res, meta_res):
+    """
+    Objective 0-100 comprehensive Disk Quality Score (Higher is better) across all executed dimensions:
+    Sequential throughput (20%), Random 4K IOPS (25%), Latency & fsync (15%),
+    High-Concurrency PT/Backup (15%), 50% Sustained Endurance (15%), Metadata (10%).
+    """
+    parts = []
+    subs = {"s_seq": "-", "s_4k": "-", "s_lat": "-", "s_conc": "-", "s_sust": "-", "s_meta": "-"}
+
+    if matrix_res:
+        by_n = {r.get("name"): r for r in matrix_res if not r.get("error")}
+        seq_bws = [max(by_n[k].get("r_bw_mbs", 0), by_n[k].get("w_bw_mbs", 0)) for k in ("SEQ1M_R_Q32", "SEQ1M_W_Q32", "SEQ1M_W_Q1") if k in by_n]
+        if seq_bws:
+            avg_seq = sum(seq_bws) / len(seq_bws)
+            s_seq = min(100.0, (avg_seq / 2000.0) ** 0.55 * 100.0)
+            parts.append((0.20, s_seq)); subs["s_seq"] = f"{s_seq:.0f}"
+        iops_4k = [max(by_n[k].get("r_iops", 0), by_n[k].get("w_iops", 0)) for k in ("RND4K_R_Q64", "RND4K_W_Q64", "RND4K_R_Q16", "RND4K_W_Q16") if k in by_n]
+        if iops_4k:
+            avg_4k = sum(iops_4k) / len(iops_4k)
+            s_4k = min(100.0, (avg_4k / 80000.0) ** 0.42 * 100.0)
+            parts.append((0.25, s_4k)); subs["s_4k"] = f"{s_4k:.0f}"
+
+    lat_vals = []
+    if matrix_res:
+        for r in matrix_res:
+            if not r.get("error") and r.get("name") in ("RND4K_R_Q16", "RND4K_W_Q16", "RND8K_70_30"):
+                pv = max(r.get("r_p99_ms", 0), r.get("w_p99_ms", 0))
+                if pv > 0: lat_vals.append(pv)
+    if prod_res:
+        for r in prod_res:
+            if not r.get("error"):
+                pv = max(r.get("r_p99_ms", 0), r.get("w_p99_ms", 0))
+                if pv > 0: lat_vals.append(pv)
+    if lat_vals:
+        avg_lat = sum(lat_vals) / len(lat_vals)
+        s_lat = max(5.0, min(100.0, 100.0 / (1.0 + (avg_lat / 15.0) ** 0.85)))
+        parts.append((0.15, s_lat)); subs["s_lat"] = f"{s_lat:.0f}"
+    elif ioping_res and ioping_res.get("direct_seek", "N/A") != "N/A":
+        m_u = re.search(r"([0-9.]+)\s*(us|ms)", ioping_res["direct_seek"])
+        if m_u:
+            ms_v = float(m_u.group(1)) / (1000.0 if m_u.group(2) == "us" else 1.0)
+            s_lat = max(5.0, min(100.0, 100.0 / (1.0 + (ms_v / 3.0) ** 0.75)))
+            parts.append((0.15, s_lat)); subs["s_lat"] = f"{s_lat:.0f}"
+
+    if conc_res:
+        cbws = [r.get("r_bw_mbs", 0) + r.get("w_bw_mbs", 0) for r in conc_res if not r.get("error")]
+        if cbws:
+            avg_c = sum(cbws) / len(cbws)
+            s_conc = min(100.0, (avg_c / 800.0) ** 0.50 * 100.0)
+            parts.append((0.15, s_conc)); subs["s_conc"] = f"{s_conc:.0f}"
+
+    if sustained_res and isinstance(sustained_res.get("seq_write"), dict) and not sustained_res["seq_write"].get("error"):
+        sw_bw = sustained_res["seq_write"].get("w_bw_mbs", 0)
+        s_sust = min(100.0, (sw_bw / 1000.0) ** 0.52 * 100.0)
+        parts.append((0.15, s_sust)); subs["s_sust"] = f"{s_sust:.0f}"
+
+    if meta_res and meta_res.get("create_fps", 0) > 0:
+        avg_m = (meta_res.get("create_fps", 0) + meta_res.get("read_fps", 0) + meta_res.get("delete_fps", 0)) / 3.0
+        s_meta = min(100.0, (avg_m / 60000.0) ** 0.45 * 100.0)
+        parts.append((0.10, s_meta)); subs["s_meta"] = f"{s_meta:.0f}"
+
+    if not parts:
+        return None
+
+    score = round(sum(w * v for w, v in parts) / sum(w for w, _ in parts), 1)
+    grade = "S+" if score >= 90 else ("S" if score >= 80 else ("A" if score >= 70 else ("B" if score >= 55 else ("C" if score >= 40 else "D"))))
+    return {"score": score, "grade": grade, **subs}
+
+
 def collect_system_topology(target_dir="/", forced_profile="auto"):
     _, virt_raw, _ = run_cmd("systemd-detect-virt 2>/dev/null || echo unknown")
     _, os_rel, _ = run_cmd("grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '\"'")
@@ -515,12 +588,17 @@ def run_geekbench(mode, work_dir):
     # If CLI output only gave the upload URL (standard for Geekbench 5/6 free CLI), fetch official result page
     if (sc == "N/A" or mc == "N/A") and res_url:
         try:
-            req = urllib.request.Request(res_url, headers={"User-Agent": "Mozilla/5.0"})
+            req = urllib.request.Request(res_url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
             with urllib.request.urlopen(req, timeout=20) as resp:
                 page = resp.read().decode("utf-8", errors="ignore")
-            scores = re.findall(r"<div class=['\"]score['\"]>\s*(\d+)\s*</div>", page)
+            scores = re.findall(r"class=['\"][^'\"]*\bscore\b[^'\"]*['\"][^>]*>\s*(\d+)\s*<", page, re.S | re.I)
             if len(scores) >= 2:
                 sc, mc = scores[0], scores[1]
+            else:
+                m1 = re.search(r"Single-Core Score.*?(\d{2,6})", page, re.S | re.I)
+                m2 = re.search(r"Multi-Core Score.*?(\d{2,6})", page, re.S | re.I)
+                if m1: sc = m1.group(1)
+                if m2: mc = m2.group(1)
         except Exception:
             pass
 
@@ -745,6 +823,15 @@ def build_sections(data, lang=None, site_url=None):
         sec_overview.append(
             f"                        {C_GRN}╚═ {L['os_sub'].format(media=os_idx['media'], d_bw=os_idx['d_bw'], d_4k=os_idx['d_4k'], d_lat=os_idx['d_lat'], d_drop=os_idx['d_drop'])}{C_RST}"
         )
+    d_sc = data.get("disk_score")
+    if d_sc:
+        ds_col = C_BG_GRN if d_sc["score"] >= 70 else (C_BG_YEL if d_sc["score"] >= 45 else C_BG_RED)
+        sec_overview.append(
+            f"{C_CYN}{L['k_dscore']}{ds_col} {d_sc['score']:.1f} / 100 · {d_sc['grade']} {C_RST}"
+        )
+        sec_overview.append(
+            f"                        {C_GRN}╚═ {L['ds_sub'].format(s_seq=d_sc['s_seq'], s_4k=d_sc['s_4k'], s_lat=d_sc['s_lat'], s_conc=d_sc['s_conc'], s_sust=d_sc['s_sust'], s_meta=d_sc['s_meta'])}{C_RST}"
+        )
     gb = data.get("geekbench")
     if not gb:
         sec_overview.append(f"{C_CYN}{L['k_gb_skip']}{skip}")
@@ -903,8 +990,8 @@ ANSI_BG_MAP = {
 }
 
 
-def _span_px_width(s, ascii_w=8.4, cjk_w=14.2):
-    """Calculate accurate pixel width for mixed ASCII + CJK monospace text."""
+def _span_px_width(s, ascii_w=10.5, cjk_w=17.6):
+    """Calculate accurate pixel width for larger 17.5px mixed ASCII + CJK monospace text."""
     total = 0.0
     for ch in s:
         total += cjk_w if unicodedata.east_asian_width(ch) in ("W", "F") else ascii_w
@@ -930,30 +1017,36 @@ def parse_ansi_spans(line):
 
 
 def render_ansi_to_svg_str(ansi_text):
-    """HardwareQuality / NodeQuality faithful charcoal terminal SVG renderer with exact x-locked highlight bars."""
+    """Crisp, larger-font (17.5px) HardwareQuality-style SVG renderer with dynamic width & zero clipping."""
     lines = ansi_text.splitlines()
-    line_height, pad_x, pad_y, width = 22, 26, 24, 980
-    height = pad_y * 2 + len(lines) * line_height + 10
+    line_height, pad_x, pad_y = 29, 34, 32
+    parsed = [parse_ansi_spans(ln) for ln in lines]
+    max_line_w = 0.0
+    for spans in parsed:
+        w_line = sum(_span_px_width(t) + (6.0 if bg else 0.0) for t, _, bg, _, _ in spans)
+        if w_line > max_line_w:
+            max_line_w = w_line
+    width = max(1140, int(max_line_w + pad_x * 2 + 28))
+    height = pad_y * 2 + len(lines) * line_height + 20
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<defs><style>text { font-family: "JetBrains Mono","Cascadia Mono","Consolas","Microsoft YaHei","Noto Sans Mono CJK SC",monospace; font-size: 14px; white-space: pre; }</style></defs>',
-        '<rect width="100%" height="100%" rx="8" fill="#1b1c1f"/>',
+        '<defs><style>text { font-family: "JetBrains Mono","Fira Code","Cascadia Code","Sarasa Mono SC","LXGW WenKai Mono","PingFang SC","Microsoft YaHei",monospace; font-size: 17.5px; letter-spacing: 0.25px; text-rendering: geometricPrecision; white-space: pre; }</style></defs>',
+        '<rect width="100%" height="100%" rx="10" fill="#1b1c1f"/>',
     ]
-    for idx, line in enumerate(lines):
-        y = pad_y + (idx + 1) * line_height - 5
+    for idx, spans in enumerate(parsed):
+        y = pad_y + (idx + 1) * line_height - 7
         rects, texts = [], []
         cur_x = float(pad_x)
-        for txt, fg, bg, bold, ul in parse_ansi_spans(line):
+        for txt, fg, bg, bold, ul in spans:
             px_w = _span_px_width(txt)
             if bg:
-                # Lock both <rect> and <text> to exact cur_x so CJK/ASCII font variance can NEVER clip left or right
-                rx_w = max(px_w + 4.0, 14.0)
-                rects.append(f'<rect x="{cur_x:.1f}" y="{y - 14.5:.1f}" width="{rx_w:.1f}" height="18.5" rx="2" fill="{bg}"/>')
+                rx_w = max(px_w + 6.0, 18.0)
+                rects.append(f'<rect x="{cur_x:.1f}" y="{y - 18.5:.1f}" width="{rx_w:.1f}" height="24" rx="3" fill="{bg}"/>')
             fw = ' font-weight="700"' if bold else ''
             td = ' text-decoration="underline"' if ul else ''
             fill_c = "#18181b" if bg == "#d8d8d8" else ("#ffffff" if bg in ("#52a31c", "#c92a2a") else fg)
             texts.append(f'<text x="{cur_x:.1f}" y="{y}" fill="{fill_c}"{fw}{td} xml:space="preserve">{html.escape(txt)}</text>')
-            cur_x += px_w + (4.0 if bg else 0.0)
+            cur_x += px_w + (6.0 if bg else 0.0)
         svg.extend(rects)
         svg.extend(texts)
     svg.append("</svg>")
@@ -1233,6 +1326,7 @@ def run_benchmark_cli(args):
         show_bar(f"{gb_lbl} CPU 跑分完成", f"{gb_lbl} CPU benchmark completed", advance=1)
 
     overselling_res = calc_overselling_index(topo, matrix_res, prod_res, sustained_res)
+    disk_score_res = calc_disk_score(topo, ioping_res, matrix_res, prod_res, conc_res, sustained_res, meta_res)
 
     thorough_cleanup(work_dir, args.target, do_trim=True)
     end_emo = random.choice(end_kaomojis)
@@ -1241,7 +1335,8 @@ def run_benchmark_cli(args):
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,
         "report_time": start_str, "elapsed_min": round((time.time() - t_start) / 60.0, 2),
-        "selected": sel, "plan": plan, "topology": topo, "geekbench": gb_res, "overselling": overselling_res,
+        "selected": sel, "plan": plan, "topology": topo, "geekbench": gb_res,
+        "overselling": overselling_res, "disk_score": disk_score_res,
         "lifetime": life_res, "ioping": ioping_res, "matrix": matrix_res,
         "production": prod_res, "concurrency": conc_res, "sustained": sustained_res,
         "network": net_res, "ip_quality": ipq_res, "metadata": meta_res,
@@ -1251,7 +1346,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.6"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.7"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))

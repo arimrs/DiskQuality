@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.6 — Hardened Paginated Web & API Server (Bilingual zh/en)
+DiskQuality v1.0.7 — Hardened Paginated Web & API Server (Bilingual zh/en)
 - Paginated report viewer (6 interactive pages + Prev/Next + Arrow-Key navigation)
 - Hardened against Stored XSS, search-engine indexing, referrer leakage, and unmasked IP storage
 - Persistent report storage by default (DQ_TTL_SECONDS=0; optional TTL if > 0)
@@ -250,7 +250,7 @@ def render_report_html(rid, data, rem_sec):
 <style>
   *{{box-sizing:border-box}}
   body{{margin:0;padding:24px 16px 48px;background:#0f0f13;color:#d4d4d8;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.5}}
-  .wrap{{max-width:1040px;margin:0 auto}}
+  .wrap{{max-width:1200px;margin:0 auto}}
   .brand{{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:22px;text-decoration:none}}
   .bar{{width:4px;height:34px;background:#22c55e}}
   .title{{font-size:32px;font-weight:600;color:#f4f4f5;letter-spacing:0.3px}}
@@ -268,7 +268,9 @@ def render_report_html(rid, data, rem_sec):
   .nav-btn{{cursor:pointer;background:#141518;color:#a1a1aa;border:1px solid #2b2d33;border-radius:4px;padding:3px 9px;font-size:13px}}
   .nav-btn:hover{{color:#fff;border-color:#52525b}}
   .pind{{font-size:12px;color:#71717a;font-family:monospace;min-width:34px;text-align:center}}
-  .viewport{{overflow-x:auto;padding:4px 0 8px}}
+  .viewport{{position:relative;overflow-x:auto;padding:4px 0 8px;--mx:-500px;--my:-500px}}
+  .viewport::after{{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(280px circle at var(--mx) var(--my), rgba(255,255,255,0.16), rgba(96,210,255,0.06) 42%, transparent 72%);mix-blend-mode:soft-light;opacity:0;transition:opacity 0.25s ease}}
+  .viewport:hover::after{{opacity:1}}
   .pane{{display:none}} .pane.active{{display:block}}
   svg{{display:block;max-width:100%;height:auto}}
   .foot{{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#71717a}}
@@ -288,10 +290,12 @@ def render_report_html(rid, data, rem_sec):
         <button class="nav-btn" onclick="stepPage(1)">›</button>
       </div>
     </div>
-    <div class="viewport">{pages_html}</div>
+    <div class="viewport" id="vp">{pages_html}</div>
   </div>
   <div class="foot"><span>{ttl_txt}</span><span class="toast" id="toast"></span></div>
 </div><script>
+const vp=document.getElementById('vp');
+vp.addEventListener('mousemove',e=>{{const r=vp.getBoundingClientRect();vp.style.setProperty('--mx',(e.clientX-r.left+vp.scrollLeft)+'px');vp.style.setProperty('--my',(e.clientY-r.top)+'px');}});
 const P={{txt:{safe_json_for_script(plain_txt)},ns:{safe_json_for_script(ns_md)},md:{safe_json_for_script(std_md)},svgs:{safe_json_for_script(page_svgs)}}};
 let cur=0, total={len(page_keys)};
 function goPage(i){{
