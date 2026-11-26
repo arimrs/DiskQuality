@@ -248,23 +248,28 @@ fi
 echo ""
 
 # 5. Disk-Aware Time Estimation & 5 Merged Interactive Module Groups (Default 'y' / GB5)
-DISK_TOTAL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $2 / 1048576.0 }')
-DISK_AVAIL_GB=$(df -Pk "$TARGET_DIR" | awk 'NR==2 { printf "%.1f", $4 / 1048576.0 }')
-STRESS_EST_GB=$(awk -v t="$DISK_TOTAL_GB" -v a="$DISK_AVAIL_GB" 'BEGIN { r=t*0.5; c=a*0.8; g=(r<c?r:c); if(g>2000) g=2000; if(g<1) g=1; printf "%.1f", g }')
-DEV_SRC=$(findmnt -n -o SOURCE "$TARGET_DIR" 2>/dev/null || df -P "$TARGET_DIR" | awk 'NR==2{print $1}')
-BASE_DEV=$(lsblk -no PKNAME "$DEV_SRC" 2>/dev/null | head -n1 || true)
+DISK_TOTAL_GB=$(df -Pk "$TARGET_DIR" 2>/dev/null | awk 'NR==2 { printf "%.1f", $2 / 1048576.0 }' || echo "50.0")
+DISK_AVAIL_GB=$(df -Pk "$TARGET_DIR" 2>/dev/null | awk 'NR==2 { printf "%.1f", $4 / 1048576.0 }' || echo "25.0")
+[[ -z "$DISK_TOTAL_GB" ]] && DISK_TOTAL_GB="50.0"
+[[ -z "$DISK_AVAIL_GB" ]] && DISK_AVAIL_GB="25.0"
+STRESS_EST_GB=$(awk -v t="$DISK_TOTAL_GB" -v a="$DISK_AVAIL_GB" 'BEGIN { r=t*0.5; c=a*0.8; g=(r<c?r:c); if(g>2000) g=2000; if(g<1) g=1; printf "%.1f", g }' || echo "10.0")
+DEV_SRC=$({ findmnt -n -o SOURCE "$TARGET_DIR" 2>/dev/null || df -P "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $1}'; } | sed 's/\[.*\]//' || true)
+BASE_DEV=$({ lsblk -no PKNAME "$DEV_SRC" 2>/dev/null || true; } | awk 'NR==1{print; exit}' || true)
 if [[ -z "$BASE_DEV" && "$DEV_SRC" == /dev/* ]]; then
-    BASE_DEV=$(basename "$DEV_SRC" | sed -E 's/^(nvme[0-9]+n[0-9]+|mmcblk[0-9]+|loop[0-9]+)p[0-9]+$/\1/; s/[0-9]+$//')
+    BASE_DEV=$(basename "$DEV_SRC" | sed -E 's/^(nvme[0-9]+n[0-9]+|mmcblk[0-9]+|loop[0-9]+)p[0-9]+$/\1/; s/[0-9]+$//' || true)
 fi
-ROTA_VAL=$(cat "/sys/block/${BASE_DEV}/queue/rotational" 2>/dev/null || echo "0")
+ROTA_VAL="0"
+if [[ -n "$BASE_DEV" && -r "/sys/block/${BASE_DEV}/queue/rotational" ]]; then
+    ROTA_VAL=$(cat "/sys/block/${BASE_DEV}/queue/rotational" 2>/dev/null || echo "0")
+fi
 if [[ "$ROTA_VAL" == "1" ]]; then
     MEDIA_ZH="HDD/机械盘"; MEDIA_EN="HDD"
 else
     MEDIA_ZH="SSD/NVMe"; MEDIA_EN="SSD/NVMe"
 fi
 
-# Quick 64MB pre-test write/read speed probe for accurate ETA calculation (POSIX-compatible)
-mkdir -p "$WORK_DIR"
+# Quick 64MB pre-test write/read speed probe (100% pipefail-safe on KVM/ZFS/Btrfs/LXC/OpenVZ/BusyBox)
+mkdir -p "$WORK_DIR" 2>/dev/null || true
 PROBE_FILE="${WORK_DIR}/.speed_probe.bin"
 _parse_dd_mbs() {
     python3 -c '
@@ -279,12 +284,23 @@ if m:
     print(f"{v:.1f}")
 ' 2>/dev/null || true
 }
-PROBE_W_MBS=$(dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 oflag=direct 2>&1 | _parse_dd_mbs)
-[[ -z "$PROBE_W_MBS" ]] && PROBE_W_MBS=$(dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 conv=fdatasync 2>&1 | _parse_dd_mbs)
-PROBE_R_MBS=$(dd if="$PROBE_FILE" of=/dev/null bs=1M iflag=direct 2>&1 | _parse_dd_mbs)
+PROBE_W_MBS=$({ dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 oflag=direct 2>&1 || true; } | _parse_dd_mbs || true)
+if [[ -z "$PROBE_W_MBS" ]]; then
+    PROBE_W_MBS=$({ dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 conv=fdatasync 2>&1 || true; } | _parse_dd_mbs || true)
+fi
+if [[ -z "$PROBE_W_MBS" ]]; then
+    PROBE_W_MBS=$({ dd if=/dev/zero of="$PROBE_FILE" bs=1M count=64 2>&1 || true; } | _parse_dd_mbs || true)
+fi
+PROBE_R_MBS=""
+if [[ -f "$PROBE_FILE" ]]; then
+    PROBE_R_MBS=$({ dd if="$PROBE_FILE" of=/dev/null bs=1M iflag=direct 2>&1 || true; } | _parse_dd_mbs || true)
+    if [[ -z "$PROBE_R_MBS" ]]; then
+        PROBE_R_MBS=$({ dd if="$PROBE_FILE" of=/dev/null bs=1M 2>&1 || true; } | _parse_dd_mbs || true)
+    fi
+fi
 rm -f "$PROBE_FILE" 2>/dev/null || true
-[[ -z "$PROBE_W_MBS" ]] && PROBE_W_MBS="150.0"
-[[ -z "$PROBE_R_MBS" ]] && PROBE_R_MBS="$PROBE_W_MBS"
+if [[ -z "$PROBE_W_MBS" ]]; then PROBE_W_MBS="150.0"; fi
+if [[ -z "$PROBE_R_MBS" ]]; then PROBE_R_MBS="$PROBE_W_MBS"; fi
 
 # Compute realistic per-group ETA from measured write speed + disk size + time budget
 EST_CORE_MIN=$(awk -v w="$PROBE_W_MBS" -v m="$MINUTES" 'BEGIN {
