@@ -1370,7 +1370,7 @@ def run_benchmark_cli(args):
     if gb_mode not in ("gb5", "gb6"):
         gb_mode = "skip"
 
-    # 3. Clean visual progress bar tracker (kaomoji reserved strictly for end completion)
+    # 3. Time-weighted visual progress bar with live speed-calibrated ETA (kaomoji only at 100% end)
     end_kaomojis = (
         "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "( •̀ ω •́ )✧", "(๑•̀ㅂ•́)و✧", "ヾ(•ω•`)o",
         "(o´ω`o)ﾉ", "٩(｡•́‿•̀｡)۶", "(*^▽^*)", "(☆▽☆)",
@@ -1378,58 +1378,104 @@ def run_benchmark_cli(args):
         "٩(ˊᗜˋ*)و", "✧*｡٩(ˊᗜˋ*)و✧*｡", "(￣▽￣)ノ", "o(*￣▽￣*)ブ",
         "(≧▽≦)/", "ヾ(≧▽≦*)o", "(●'◡'●)", "ヽ(•̀ω•́ )ゝ",
     )
-    total_steps = (
-        1  # topology
-        + (1 if gb_mode != "skip" else 0)
-        + (1 if sel["ioping"] else 0)
-        + (14 if sel["matrix"] else 0)
-        + (4 if sel["prod"] else 0)
-        + (4 if sel["concurrency"] else 0)
-        + (2 if sel["sustained"] else 0)
-        + (1 if sel["network"] else 0)
-        + (1 if sel["ip_quality"] else 0)
-        + (1 if sel["meta"] else 0)
-        + 1  # final cleanup & report
-    )
-    step_state = {"cur": 0}
 
-    def show_bar(msg_zh, msg_en, advance=1, suffix=""):
-        step_state["cur"] = min(total_steps, step_state["cur"] + advance)
-        pct = int(round(step_state["cur"] * 100.0 / max(1, total_steps)))
-        filled = int(round(24 * pct / 100.0))
-        bar = "█" * filled + "░" * (24 - filled)
-        ts = datetime.now(tz).strftime("%H:%M:%S")
-        msg = msg_en if lang == "en" else msg_zh
-        tail = f" {suffix}" if suffix else ""
-        print(f"{C_CYN}[{ts}]{C_RST} {C_GRN}[{bar}]{C_RST} {C_YEL}{pct:3d}%{C_RST} | {msg}{tail}", flush=True)
-
-    show_bar("正在采集系统与块设备拓扑...", "Collecting system & block device topology...", advance=0)
     plan = calc_adaptive_plan(args.target, args.minutes)
     topo = collect_system_topology(args.target, forced_profile=getattr(args, "profile", "auto"))
     ioe, io_direct = probe_fio_capabilities(work_dir)
     plan["ioengine"] = ioe
     plan["direct"] = io_direct
-    # Platform-specific adaptive scheduling: cap huge dedicated arrays cleanly & protect container pids/ulimit
     prof = topo.get("profile", "vps")
     if prof == "dedicated":
         plan["matrix_file_gb"] = min(8.0, max(plan["matrix_file_gb"], 4.0))
         plan["stress_file_gb"] = min(plan["stress_file_gb"], 2000.0)
     elif prof == "container":
         plan["matrix_file_gb"] = min(plan["matrix_file_gb"], 2.0)
+
+    rt, msz = plan["matrix_item_sec"], plan["matrix_file_gb"]
+    probe_w = float(getattr(args, "probe_write_mbs", 0.0) or 0.0)
+    if probe_w <= 0.0:
+        # Fast 1s 64MB fallback write probe if invoked directly without run.sh
+        pf = os.path.join(work_dir, ".py_probe.bin")
+        t0_p = time.perf_counter()
+        try:
+            blk = b"\x00" * (1024 * 1024)
+            with open(pf, "wb") as f:
+                for _ in range(64): f.write(blk)
+                f.flush(); os.fsync(f.fileno())
+            probe_w = round(64.0 / max(time.perf_counter() - t0_p, 0.01), 1)
+        except Exception:
+            probe_w = 150.0
+        finally:
+            try: os.remove(pf)
+            except Exception: pass
+
+    def _calc_phase_secs(w_mbs):
+        w = max(10.0, float(w_mbs or 150.0))
+        m_alloc = min(150.0, (msz * 1024.0) / w)
+        s_alloc = min(120.0, ((plan["stress_file_gb"] * 1024.0) / w) * 0.12)
+        return {
+            "topo": 3.0,
+            "ioping": 12.0 if sel["ioping"] else 0.0,
+            "matrix_first": (rt + m_alloc) if sel["matrix"] else 0.0,
+            "matrix_each": float(rt) if sel["matrix"] else 0.0,
+            "prod_each": float(rt) if sel["prod"] else 0.0,
+            "conc_each": float(rt) if sel["concurrency"] else 0.0,
+            "sust_a": (plan["sustained_seq_sec"] + s_alloc) if sel["sustained"] else 0.0,
+            "sust_b": float(plan["sustained_mix_sec"]) if sel["sustained"] else 0.0,
+            "network": 22.0 if sel["network"] else 0.0,
+            "ip_quality": 18.0 if sel["ip_quality"] else 0.0,
+            "meta": (35.0 if w < 120.0 else 12.0) if sel["meta"] else 0.0,
+            "geekbench": 180.0 if gb_mode != "skip" else 0.0,
+            "cleanup": 4.0,
+        }
+
+    psec = _calc_phase_secs(probe_w)
+    total_est_sec = (
+        psec["topo"] + psec["ioping"]
+        + (psec["matrix_first"] + psec["matrix_each"] * 13 if sel["matrix"] else 0.0)
+        + (psec["prod_each"] * 4 if sel["prod"] else 0.0)
+        + (psec["conc_each"] * 4 if sel["concurrency"] else 0.0)
+        + psec["sust_a"] + psec["sust_b"]
+        + psec["network"] + psec["ip_quality"] + psec["meta"] + psec["geekbench"] + psec["cleanup"]
+    )
+    eta_state = {"done_sec": 0.0, "total_sec": max(1.0, total_est_sec), "w_mbs": probe_w}
+
+    def _fmt_eta(rem_s):
+        rem_s = max(0, int(round(rem_s)))
+        if rem_s == 0:
+            return "0s"
+        mm, ss = divmod(rem_s, 60)
+        return f"{mm}m{ss:02d}s" if mm > 0 else f"{ss}s"
+
+    def show_bar(msg_zh, msg_en, advance_sec=0.0, suffix="", force_100=False):
+        eta_state["done_sec"] = min(eta_state["total_sec"], eta_state["done_sec"] + max(0.0, float(advance_sec)))
+        if force_100:
+            pct = 100
+            rem_s = 0.0
+        else:
+            pct = min(99, int(round(eta_state["done_sec"] * 100.0 / max(1.0, eta_state["total_sec"]))))
+            rem_s = max(0.0, eta_state["total_sec"] - eta_state["done_sec"])
+        filled = int(round(24 * pct / 100.0))
+        bar = "█" * filled + "░" * (24 - filled)
+        ts = datetime.now(tz).strftime("%H:%M:%S")
+        msg = msg_en if lang == "en" else msg_zh
+        tail = f" {suffix}" if suffix else ""
+        eta_str = f" · ETA ~{_fmt_eta(rem_s)}" if not force_100 else " · ETA 0s"
+        print(f"{C_CYN}[{ts}]{C_RST} {C_GRN}[{bar}]{C_RST} {C_YEL}{pct:3d}%{C_RST}{C_CYN}{eta_str:<15}{C_RST} | {msg}{tail}", flush=True)
+
     show_bar(
-        f"拓扑完成 · {prof.upper()} ({topo['virt']}/{topo['arch']}) · {plan['disk_total_gb']} GB · {ioe} direct={io_direct}",
-        f"Topology ready · {prof.upper()} ({topo['virt']}/{topo['arch']}) · {plan['disk_total_gb']} GB · {ioe} direct={io_direct}",
-        advance=1,
+        f"预热测速 {probe_w:.1f} MB/s · {prof.upper()} ({topo['virt']}/{topo['arch']}) · 总预计 ~{_fmt_eta(eta_state['total_sec'])}",
+        f"Probe {probe_w:.1f} MB/s · {prof.upper()} ({topo['virt']}/{topo['arch']}) · Total ETA ~{_fmt_eta(eta_state['total_sec'])}",
+        advance_sec=psec["topo"],
     )
 
     ioping_res = None
     if sel["ioping"]:
-        show_bar("正在运行底层延迟基线测试 (ioping)...", "Running latency baseline (ioping)...", advance=0)
+        show_bar("正在运行底层延迟基线测试 (ioping)...", "Running latency baseline (ioping)...", advance_sec=0)
         ioping_res = run_ioping_tests(work_dir)
-        show_bar("底层延迟基线测试 (ioping) 完成", "Latency baseline (ioping) completed", advance=1)
+        show_bar("底层延迟基线测试 (ioping) 完成", "Latency baseline (ioping) completed", advance_sec=psec["ioping"])
 
     mfile, sfile = os.path.join(work_dir, "matrix.bin"), os.path.join(work_dir, "stress_50pct.bin")
-    rt, msz = plan["matrix_item_sec"], plan["matrix_file_gb"]
     max_jobs = 16 if prof == "container" else 32
 
     matrix_res = None
@@ -1445,9 +1491,18 @@ def run_benchmark_cli(args):
         ]
         matrix_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(specs, 1):
-            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] 正在测 {n}...", f"FIO Matrix [{idx}/{len(specs)}] {n}...", advance=0)
-            matrix_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
-            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] {n} 完成", f"FIO Matrix [{idx}/{len(specs)}] {n} done", advance=1)
+            step_w = psec["matrix_first"] if idx == 1 else psec["matrix_each"]
+            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] 正在测 {n}...", f"FIO Matrix [{idx}/{len(specs)}] {n}...", advance_sec=0)
+            res_j = run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe)
+            matrix_res.append(res_j)
+            # Re-calibrate remaining sustained ETA right after real SEQ1M_W_Q32 write speed is measured
+            if n == "SEQ1M_W_Q32" and not res_j.get("error") and res_j.get("w_bw_mbs", 0) > 5:
+                real_w = res_j["w_bw_mbs"]
+                new_p = _calc_phase_secs(real_w)
+                delta_s = (new_p["sust_a"] - psec["sust_a"]) + (new_p["meta"] - psec["meta"])
+                psec["sust_a"], psec["meta"] = new_p["sust_a"], new_p["meta"]
+                eta_state["total_sec"] = max(eta_state["done_sec"] + 10.0, eta_state["total_sec"] + delta_s)
+            show_bar(f"FIO 矩阵 [{idx}/{len(specs)}] {n} 完成", f"FIO Matrix [{idx}/{len(specs)}] {n} done", advance_sec=step_w)
 
     prod_res = None
     if sel["prod"]:
@@ -1457,9 +1512,9 @@ def run_benchmark_cli(args):
         ]
         prod_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(pspecs, 1):
-            show_bar(f"生产模型 [{idx}/{len(pspecs)}] 正在测 {n}...", f"Production [{idx}/{len(pspecs)}] {n}...", advance=0)
+            show_bar(f"生产模型 [{idx}/{len(pspecs)}] 正在测 {n}...", f"Production [{idx}/{len(pspecs)}] {n}...", advance_sec=0)
             prod_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
-            show_bar(f"生产模型 [{idx}/{len(pspecs)}] {n} 完成", f"Production [{idx}/{len(pspecs)}] {n} done", advance=1)
+            show_bar(f"生产模型 [{idx}/{len(pspecs)}] {n} 完成", f"Production [{idx}/{len(pspecs)}] {n} done", advance_sec=psec["prod_each"])
 
     conc_res = None
     if sel["concurrency"]:
@@ -1471,9 +1526,9 @@ def run_benchmark_cli(args):
         ]
         conc_res = []
         for idx, (n, rw, bs, qd, nj, d, mix, fs) in enumerate(cspecs, 1):
-            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] 正在测 {n}...", f"Concurrency [{idx}/{len(cspecs)}] {n}...", advance=0)
+            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] 正在测 {n}...", f"Concurrency [{idx}/{len(cspecs)}] {n}...", advance_sec=0)
             conc_res.append(run_fio_job(n, mfile, msz, rw, bs, qd, nj, rt, d, mix, fs, ioengine=ioe))
-            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] {n} 完成", f"Concurrency [{idx}/{len(cspecs)}] {n} done", advance=1)
+            show_bar(f"小量多并发 [{idx}/{len(cspecs)}] {n} 完成", f"Concurrency [{idx}/{len(cspecs)}] {n} done", advance_sec=psec["conc_each"])
 
     try: os.remove(mfile)
     except Exception: pass
@@ -1492,12 +1547,12 @@ def run_benchmark_cli(args):
             show_bar(
                 f"50% 容量持久压测 阶段 A 顺序写 ({plan['stress_file_gb']} GB, {seq_m} 分钟)...",
                 f"50% Endurance Phase A Seq Write ({plan['stress_file_gb']} GB, {seq_m} min)...",
-                advance=0,
+                advance_sec=0,
             )
             sw = run_fio_job("SUSTAINED_50PCT_SEQ_W", sfile, plan["stress_file_gb"], "write", "1M", 16, 1, plan["sustained_seq_sec"], io_direct, ioengine=ioe)
-            show_bar("50% 容量持久压测 阶段 A 完成，进入阶段 B 随机混合...", "50% Endurance Phase A done, starting Phase B Mixed...", advance=1)
+            show_bar("50% 容量持久压测 阶段 A 完成，进入阶段 B 随机混合...", "50% Endurance Phase A done, starting Phase B Mixed...", advance_sec=psec["sust_a"])
             ms = run_fio_job("SUSTAINED_50PCT_MIX", sfile, plan["stress_file_gb"], "randrw", "8K", 32, 2, plan["sustained_mix_sec"], io_direct, 30, ioengine=ioe)
-            show_bar("50% 容量持久压测 阶段 B 完成", "50% Endurance Phase B completed", advance=1)
+            show_bar("50% 容量持久压测 阶段 B 完成", "50% Endurance Phase B completed", advance_sec=psec["sust_b"])
         finally:
             if io_proc is not None:
                 try: os.killpg(os.getpgid(io_proc.pid), signal.SIGKILL)
@@ -1514,36 +1569,36 @@ def run_benchmark_cli(args):
 
     net_res = None
     if sel["network"]:
-        show_bar("正在测试全球 8 大单播节点延迟与大文件下行...", "Running 8-hub global TCP latency & bulk download...", advance=0)
+        show_bar("正在测试全球 8 大单播节点延迟与大文件下行...", "Running 8-hub global TCP latency & bulk download...", advance_sec=0)
         net_res = run_global_network_tests()
-        show_bar("国际互联与大文件下行测试完成", "Global connectivity & download tests completed", advance=1)
+        show_bar("国际互联与大文件下行测试完成", "Global connectivity & download tests completed", advance_sec=psec["network"])
 
     ipq_res = None
     if sel["ip_quality"]:
-        show_bar("正在探测 IP 质量、25 端口与 10 大平台可达性...", "Probing IP quality, Port 25 & 10-platform reachability...", advance=0)
+        show_bar("正在探测 IP 质量、25 端口与 10 大平台可达性...", "Probing IP quality, Port 25 & 10-platform reachability...", advance_sec=0)
         ipq_res = run_ip_quality_tests()
-        show_bar("IP 质量与被拒访问概率评估完成", "IP quality & denial probability completed", advance=1)
+        show_bar("IP 质量与被拒访问概率评估完成", "IP quality & denial probability completed", advance_sec=psec["ip_quality"])
 
     meta_res, life_res = None, None
     if sel["meta"]:
-        show_bar("正在运行 10,000 小文件元数据与 SMART/Ext4 寿命读取...", "Running 10,000-file metadata & SMART/Ext4 lifetime...", advance=0)
+        show_bar("正在运行 10,000 小文件元数据与 SMART/Ext4 寿命读取...", "Running 10,000-file metadata & SMART/Ext4 lifetime...", advance_sec=0)
         meta_res = run_metadata_bench(work_dir)
         life_res = collect_poweron_lifetime(topo["mount_dev"], topo["base_dev"], fs_type=topo.get("fs_type", "ext4"))
-        show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance=1)
+        show_bar("元数据与介质寿命检测完成", "Metadata & lifetime diagnostics completed", advance_sec=psec["meta"])
 
     gb_res = None
     if gb_mode != "skip":
         gb_lbl = "Geekbench 5" if gb_mode == "gb5" else "Geekbench 6"
-        show_bar(f"正在运行完整 {gb_lbl} CPU 单核/多核跑分（约 2–4 分钟）...", f"Running full {gb_lbl} CPU Single/Multi-Core benchmark (~2–4m)...", advance=0)
+        show_bar(f"正在运行完整 {gb_lbl} CPU 单核/多核跑分（约 2–4 分钟）...", f"Running full {gb_lbl} CPU Single/Multi-Core benchmark (~2–4m)...", advance_sec=0)
         gb_res = run_geekbench(gb_mode, work_dir)
-        show_bar(f"{gb_lbl} CPU 跑分完成", f"{gb_lbl} CPU benchmark completed", advance=1)
+        show_bar(f"{gb_lbl} CPU 跑分完成", f"{gb_lbl} CPU benchmark completed", advance_sec=psec["geekbench"])
 
     overselling_res = calc_overselling_index(topo, matrix_res, prod_res, sustained_res)
     disk_score_res = calc_disk_score(topo, ioping_res, matrix_res, prod_res, conc_res, sustained_res, meta_res)
 
     thorough_cleanup(work_dir, args.target, do_trim=True)
     end_emo = random.choice(end_kaomojis)
-    show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance=1, suffix=end_emo)
+    show_bar("全部测试已完成，环境已彻底清理干净！", "All tests completed & environment thoroughly cleaned!", advance_sec=psec["cleanup"], suffix=end_emo, force_100=True)
 
     data = {
         "version": VERSION, "lang": lang, "site_url": args.site_url,
@@ -1581,6 +1636,7 @@ def main():
         ap.add_argument(f"--{mod}", default="y")
     ap.add_argument("--geekbench", default="gb5", choices=["gb5", "gb6", "skip"])
     ap.add_argument("--profile", default="auto", choices=["auto", "dedicated", "vds", "vps", "container"])
+    ap.add_argument("--probe-write-mbs", type=float, default=0.0)
     ap.add_argument("--site-url", default=DEFAULT_SITE_URL)
     ap.add_argument("--upload-url", default="")
     run_benchmark_cli(ap.parse_args())

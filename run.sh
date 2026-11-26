@@ -384,5 +384,5 @@ python3 "$TMP_CORE" \
     --ioping "$RUN_IOPING" --matrix "$RUN_MATRIX" --prod "$RUN_PROD" \
     --concurrency "$RUN_CONC" --sustained "$RUN_SUSTAINED" \
     --network "$RUN_NET" --ip_quality "$RUN_IPQ" --meta "$RUN_META" \
-    --geekbench "$GB_MODE" --profile "$PROFILE_MODE" \
+    --geekbench "$GB_MODE" --profile "$PROFILE_MODE" --probe-write-mbs "$PROBE_W_MBS" \
     --site-url "$SITE_URL" --upload-url "${SITE_URL}/api/v1/record"
