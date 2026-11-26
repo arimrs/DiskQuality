@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DiskQuality v1.0.7 — Bilingual PT / Storage / Backup VPS Objective Benchmark
+# DiskQuality v1.0.8 — Bilingual PT / Storage / Backup VPS Objective Benchmark
 # ==============================================================================
 set -euo pipefail
 
 SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
-SCRIPT_VERSION="v1.0.7"
-SCRIPT_UPDATED="2026.11.25"
+SCRIPT_VERSION="v1.0.8"
+SCRIPT_UPDATED="2026.11.26"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 CYAN='\033[1;36m'

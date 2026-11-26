@@ -1,5 +1,26 @@
 # Changelog / 更新日志
 
+## v1.0.8 (2026.11.26)
+### English
+- **Bug Fixes & Stability**:
+  - Fixed `iostat` column misalignment on newer Linux distros (`sysstat 12.x`) by reading column headers dynamically.
+  - Fixed FIO output parsing failures when warnings appear before JSON, added `ioping` `fsync` fallback when `-D` is unsupported, improved IPv6-only compatibility, and prevented inflated disk scores when FIO is skipped.
+- **Cleaner Categorized Layout**:
+  - Grouped metrics into clear visual blocks (Hardware vs Scores, Sequential vs Random I/O, Regional network hubs, IP identity / multi-API risk / platform unlock) instead of flat walls of numbers.
+- **Multi-Source IP Risk Score with Full Breakdown**:
+  - Added **IPPure, IP2Location, ping0.cc, ProxyCheck, Scamalytics, ip-api, and 3 DNSBL blacklists** to calculate a single 0–100 composite risk score — and prints each API's exact individual score so you can see where the number came from.
+
+### 简体中文
+- **修了一批影响实际跑分的 Bug**：
+  - 修复了 Debian 12/13 等新系统（`sysstat 12.x`）下 `iostat` 读写列错位的问题，现在按表头自动认列，不再写死列号。
+  - 修复了 FIO 带警告信息时解析报错、`ioping` 同步写在某些虚拟盘报 `N/A`、纯 IPv6 小鸡测速失败，以及跳过 FIO 时硬盘综合分虚高的问题。
+- **报告排版重新按类别归拢**：
+  - 不再把一堆数字平铺到底，把硬件拓扑与评分、顺序读写与 4K 随机、亚太/美洲/欧洲互联、IP 画像与平台解锁都拆成清晰的小块，扫一眼就能看懂重点。
+- **IP 质量检测升级 + 风控构成全透明**：
+  - 接入 **IPPure、IP2Location、ping0.cc、ProxyCheck、Scamalytics、ip-api 与 3 个主流黑名单（DNSBL）** 综合算出 0–100 风控值（越低越干净），并把每个 API 单独给的分原原本本列在下面，不再黑盒打分。
+
+---
+
 ## v1.0.7 (2026.11.25)
 ### English
 - **Comprehensive Quantifiable Disk Score (`0–100` & Grade `S+`–`D`)**:

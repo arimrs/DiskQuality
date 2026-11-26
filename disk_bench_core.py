@@ -27,7 +27,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.7 (2026.11.25)"
+VERSION = "v1.0.8 (2026.11.26)"
 DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
@@ -38,7 +38,10 @@ TOOL_CREDITS = [
     ("smartmontools", "https://www.smartmontools.org"),
     ("e2fsprogs / tune2fs", "https://e2fsprogs.sourceforge.net"),
     ("curl", "https://curl.se"),
-    ("ipinfo.io", "https://ipinfo.io"),
+    ("IPPure", "https://ippure.com"),
+    ("IP2Location", "https://www.ip2location.io"),
+    ("ping0.cc", "https://ping0.cc"),
+    ("ProxyCheck / Scamalytics", "https://proxycheck.io"),
     ("Cloudflare Speed", "https://speed.cloudflare.com"),
     ("CacheFly", "https://www.cachefly.com"),
     ("NodeQuality", "https://github.com/LloydAsp/NodeQuality"),
@@ -109,11 +112,19 @@ I18N = {
         "th_node": "国际节点", "th_rtt": "TCP 延迟 (min/avg/max)", "th_loss": "丢包率",
         "k_dl": "国际大文件实测：        ",
         "s8": "八、IP 质量、平台解锁与被拒绝访问概率",
-        "k_asn": "ASN / 归属地：          ", "k_ipattr": "IP 属性标记：           ",
+        "k_asn": "ASN / 归属地：          ", "k_ipattr": "IP 属性与类型：         ",
+        "k_ping0": "ping0.cc 归属校验：     ",
+        "k_risk": "综合风控值 (越低越净)： ",
+        "k_risk_src": "风控分项构成 (各API)：  ",
+        "k_dnsbl": "黑名单 (DNSBL 3库)：    ",
         "k_p25": "25 端口出站：           ", "p25_ok": "开放", "p25_no": "阻断/超时",
-        "k_deny": "被拒绝访问概率：        ",
-        "risk_low": "低风险", "risk_mid": "中风险", "risk_high": "高风险",
+        "k_deny": "主流平台被拒概率：      ",
+        "risk_low": "极低/低风控", "risk_mid": "中等风控", "risk_high": "高风控",
         "st_ok": "放行", "st_blk": "拦截/拒访",
+        "grp_hw": "── [硬件与系统拓扑] ──", "grp_eval": "── [综合量化评估] ──",
+        "grp_seq": "── [顺序大块吞吐 · Sequential] ──", "grp_rnd": "── [随机小块 IOPS · Random 4K/8K/16K] ──",
+        "grp_ip_base": "── [IP 基础画像] ──", "grp_ip_risk": "── [多源 API 风控测算与构成] ──", "grp_ip_plat": "── [主流平台可达性] ──",
+        "reg_ap": "亚太", "reg_us": "美洲", "reg_eu": "欧洲",
         "s9": "九、文件系统元数据 (10,000 × 4KB) 与通电寿命溯源",
         "k_meta": "元数据吞吐：            ", "meta_val": "创建 {c} f/s | Stat {s} f/s | 读 {r} f/s | 删 {d} f/s",
         "k_smart": "SMART 寄存器：          ", "smart_poh": " (通电 {h} h)",
@@ -163,11 +174,19 @@ I18N = {
         "th_node": "Global Hub", "th_rtt": "TCP RTT (min/avg/max)", "th_loss": "Loss",
         "k_dl": "Bulk Download Speed:    ",
         "s8": "8. IP Quality, Platform Access & Denial Probability",
-        "k_asn": "ASN / Location:         ", "k_ipattr": "IP Attributes:          ",
+        "k_asn": "ASN / Location:         ", "k_ipattr": "IP Type / Flags:        ",
+        "k_ping0": "ping0.cc Geo Check:     ",
+        "k_risk": "Composite Risk (Lower↓):",
+        "k_risk_src": "Risk API Breakdown:     ",
+        "k_dnsbl": "Blacklist (3 DNSBLs):   ",
         "k_p25": "Port 25 Outbound:       ", "p25_ok": "OPEN", "p25_no": "BLOCKED",
-        "k_deny": "Access Denial Prob:     ",
+        "k_deny": "Platform Denial Prob:   ",
         "risk_low": "Low Risk", "risk_mid": "Medium Risk", "risk_high": "High Risk",
         "st_ok": "PASS", "st_blk": "DENIED",
+        "grp_hw": "── [Hardware & Topology] ──", "grp_eval": "── [Quantifiable Scores] ──",
+        "grp_seq": "── [Sequential Throughput] ──", "grp_rnd": "── [Random 4K/8K/16K IOPS] ──",
+        "grp_ip_base": "── [IP Identity & Type] ──", "grp_ip_risk": "── [Multi-API Risk Score & Breakdown] ──", "grp_ip_plat": "── [Platform Reachability] ──",
+        "reg_ap": "APAC", "reg_us": "US", "reg_eu": "EU",
         "s9": "9. Filesystem Metadata (10,000 x 4KB) & Lifetime Diagnostics",
         "k_meta": "Metadata Rate:          ", "meta_val": "Create {c} f/s | Stat {s} f/s | Read {r} f/s | Unlink {d} f/s",
         "k_smart": "SMART Status:           ", "smart_poh": " (Power-On {h} h)",
@@ -359,7 +378,7 @@ def calc_overselling_index(topo, matrix_res, prod_res, sustained_res):
         parts.append((0.25, s_drop))
         d_drop = f"{s_drop:.0f}"
 
-    if not parts:
+    if not parts or (not matrix_res and not sustained_res):
         return None
 
     w_sum = sum(w for w, _ in parts)
@@ -432,7 +451,7 @@ def calc_disk_score(topo, ioping_res, matrix_res, prod_res, conc_res, sustained_
         s_meta = min(100.0, (avg_m / 60000.0) ** 0.45 * 100.0)
         parts.append((0.10, s_meta)); subs["s_meta"] = f"{s_meta:.0f}"
 
-    if not parts:
+    if not parts or (not matrix_res and not sustained_res):
         return None
 
     score = round(sum(w * v for w, v in parts) / sum(w for w, _ in parts), 1)
@@ -609,10 +628,19 @@ def run_geekbench(mode, work_dir):
 def run_ioping_tests(work_dir):
     res = {}
     q_dir = shlex.quote(work_dir)
-    for key, flags in [("direct_seek", "-D -c 20 -i 0.05"), ("cached_read", "-C -c 20 -i 0.05"), ("sync_write", "-D -S -W -c 20 -i 0.05")]:
-        _, out, _ = run_cmd(f"ioping {flags} {q_dir} 2>&1", timeout=60)
-        m = re.search(r'min/avg/max/mdev\s*=\s*([^\n]+)', out)
-        res[key] = m.group(1).strip() if m else "N/A"
+    for key, flags_list in [
+        ("direct_seek", ["-D -c 20 -i 0.05", "-c 20 -i 0.05"]),
+        ("cached_read", ["-C -c 20 -i 0.05"]),
+        ("sync_write",  ["-D -S -W -c 20 -i 0.05", "-S -W -c 20 -i 0.05"]),
+    ]:
+        val = "N/A"
+        for flags in flags_list:
+            _, out, _ = run_cmd(f"ioping {flags} {q_dir} 2>&1", timeout=60)
+            m = re.search(r'min/avg/max/mdev\s*=\s*([^\n]+)', out)
+            if m:
+                val = m.group(1).strip()
+                break
+        res[key] = val
     return res
 
 
@@ -628,7 +656,10 @@ def run_fio_job(name, filepath, size_gb, rw, bs, iodepth, numjobs, runtime, dire
     rc, out, _ = run_cmd(cmd, timeout=runtime + 120)
     if rc != 0 or not out: return {"name": name, "error": True}
     try:
-        j = json.loads(out)["jobs"][0]
+        s_idx, e_idx = out.find("{"), out.rfind("}")
+        if s_idx < 0 or e_idx <= s_idx:
+            return {"name": name, "error": True}
+        j = json.loads(out[s_idx:e_idx + 1])["jobs"][0]
         r, w = j["read"], j["write"]
         return {
             "name": name,
@@ -645,7 +676,7 @@ def run_fio_job(name, filepath, size_gb, rw, bs, iodepth, numjobs, runtime, dire
 
 
 def run_global_network_tests():
-    """Test TCP RTT + packet loss to 8 global hubs and bulk CDN download throughput."""
+    """Test TCP RTT + packet loss to 8 global hubs and bulk CDN download throughput (IPv4/IPv6 safe)."""
     hubs = []
     for label, host, port in GLOBAL_TCP_TARGETS:
         rtts = []
@@ -669,7 +700,7 @@ def run_global_network_tests():
         ("Cloudflare 50MB", "https://speed.cloudflare.com/__down?bytes=52428800"),
         ("CacheFly 100MB",  "https://cachefly.cachefly.net/100mb.test"),
     ]:
-        rc, out, _ = run_cmd(f"curl -4 -sS -L -m 15 -o /dev/null -w '%{{speed_download}}' '{url}'", timeout=20)
+        rc, out, _ = run_cmd(f"curl -sS -L -m 15 -o /dev/null -w '%{{speed_download}}' {shlex.quote(url)}", timeout=20)
         try:
             mbs = round(float(out) / (1024 ** 2), 2)
             downloads.append({"name": name, "mbs": mbs, "mbps": round(mbs * 8, 1)})
@@ -678,35 +709,155 @@ def run_global_network_tests():
     return {"hubs": hubs, "downloads": downloads}
 
 
-def run_ip_quality_tests():
-    """Objective ASN/geo lookup, 10-platform access probe, empirical denial probability, and port 25 test."""
-    meta = {"asn": "Unknown", "org": "Unknown", "location": "Unknown", "hosting": "Unknown"}
+def _http_get_text(url, timeout=7, ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0"):
     try:
-        req = urllib.request.Request("https://ipinfo.io/json", headers={"User-Agent": "curl/8.0"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            d = json.loads(r.read().decode("utf-8", errors="ignore"))
-            org_s = d.get("org", "")
-            parts = org_s.split(" ", 1)
-            meta["asn"] = parts[0] if parts else "Unknown"
-            meta["org"] = parts[1] if len(parts) > 1 else org_s
-            meta["location"] = ", ".join(x for x in [d.get("country", ""), d.get("region", ""), d.get("city", "")] if x)
+        req = urllib.request.Request(url, headers={"User-Agent": ua})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode("utf-8", errors="ignore")
     except Exception:
-        pass
-    try:
-        req2 = urllib.request.Request("http://ip-api.com/json/?fields=hosting,proxy,mobile", headers={"User-Agent": "curl/8.0"})
-        with urllib.request.urlopen(req2, timeout=5) as r2:
-            d2 = json.loads(r2.read().decode("utf-8", errors="ignore"))
+        return ""
+
+
+def run_ip_quality_tests():
+    """
+    Multi-source IP quality & composite risk evaluation:
+    Queries IPPure, IP2Location.io, ping0.cc, ProxyCheck.io, Scamalytics, ip-api.com, ipinfo.io,
+    3-zone DNSBL, 10 platform reachability probes, and SMTP Port 25. Never persists raw IP.
+    """
+    meta = {"asn": "Unknown", "org": "Unknown", "location": "Unknown", "hosting": "Unknown", "native_type": "Unknown", "ping0_geo": "N/A"}
+    raw_ip = ""
+    risk_sources = []  # Each item: {"api": str, "raw": str, "score": int (0-100), "weight": float}
+
+    # 1. IPPure (my.ippure.com/v1/info) — direct fraudScore (0-100) + isResidential + isBroadcast
+    ipp_txt = _http_get_text("https://my.ippure.com/v1/info", timeout=7)
+    ipp_cc = ""
+    if ipp_txt:
+        try:
+            d = json.loads(ipp_txt)
+            raw_ip = str(d.get("ip", "")).strip() or raw_ip
+            if d.get("asn"): meta["asn"] = f"AS{d['asn']}"
+            if d.get("asOrganization"): meta["org"] = str(d["asOrganization"])
+            ipp_cc = str(d.get("countryCode", "")).upper()
+            loc_s = ", ".join(x for x in [d.get("countryCode", ""), d.get("region", ""), d.get("city", "")] if x)
+            if loc_s: meta["location"] = loc_s
+            is_res = bool(d.get("isResidential", False))
+            is_bc = bool(d.get("isBroadcast", False))
+            meta["native_type"] = ("住宅/Residential" if is_res else "机房/Datacenter") + " · " + ("广播/Broadcast" if is_bc else "原生/Native")
+            if "fraudScore" in d and d["fraudScore"] is not None:
+                fs = max(0, min(100, int(d["fraudScore"])))
+                risk_sources.append({"api": "IPPure", "raw": f"{fs} ({'Res' if is_res else 'DC'}/{'BC' if is_bc else 'Native'})", "score": fs, "weight": 0.25})
+        except Exception:
+            pass
+
+    # Fallback ASN/IP from ipinfo if IPPure missed
+    if not raw_ip or meta["asn"] == "Unknown":
+        ipi_txt = _http_get_text("https://ipinfo.io/json", timeout=6, ua="curl/8.0")
+        if ipi_txt:
+            try:
+                d = json.loads(ipi_txt)
+                raw_ip = str(d.get("ip", "")).strip() or raw_ip
+                org_s = d.get("org", "")
+                parts = org_s.split(" ", 1)
+                if meta["asn"] == "Unknown" and parts: meta["asn"] = parts[0]
+                if meta["org"] == "Unknown" and len(parts) > 1: meta["org"] = parts[1]
+                if meta["location"] == "Unknown":
+                    meta["location"] = ", ".join(x for x in [d.get("country", ""), d.get("region", ""), d.get("city", "")] if x)
+            except Exception:
+                pass
+
+    # 2. IP2Location.io (api.ip2location.io) — proxy detection & country verification
+    ip2_txt = _http_get_text("https://api.ip2location.io/", timeout=7)
+    ip2_cc = ""
+    if ip2_txt:
+        try:
+            d = json.loads(ip2_txt)
+            raw_ip = str(d.get("ip", "")).strip() or raw_ip
+            ip2_cc = str(d.get("country_code", "")).upper()
+            is_px = bool(d.get("is_proxy", False))
+            sc2 = 75 if is_px else 0
+            risk_sources.append({"api": "IP2Location", "raw": "Proxy" if is_px else "Clean(0)", "score": sc2, "weight": 0.15})
+        except Exception:
+            pass
+
+    # 3. ping0.cc (geo/jsonp/check) — Chinese geo/ASN check & cross-database consistency
+    p0_txt = _http_get_text("https://ping0.cc/geo/jsonp/check", timeout=7, ua="curl/8.0")
+    if p0_txt:
+        m = re.findall(r'"([^"]*)"', p0_txt)
+        if len(m) >= 5:
+            p0_ip, p0_geo, p0_asn, p0_org, p0_cc = m[0], m[1], m[2], m[3], m[4].upper()
+            raw_ip = raw_ip or p0_ip
+            meta["ping0_geo"] = f"{p0_geo} ({p0_asn} · {p0_cc})"
+            cc_ref = ipp_cc or ip2_cc
+            mismatch = bool(cc_ref and p0_cc and cc_ref != p0_cc)
+            sc_p0 = 45 if mismatch else 10
+            risk_sources.append({"api": "ping0.cc", "raw": f"{p0_cc}/{'广播偏差' if mismatch else '归属一致'}({sc_p0})", "score": sc_p0, "weight": 0.10})
+
+    # 4. ProxyCheck.io (risk 0-100 + proxy/VPN type)
+    if raw_ip and re.match(r'^[0-9a-fA-F.:]+$', raw_ip):
+        pc_txt = _http_get_text(f"https://proxycheck.io/v2/{raw_ip}?vpn=1&asn=1&risk=1", timeout=7)
+        if pc_txt:
+            try:
+                d = json.loads(pc_txt)
+                info = d.get(raw_ip, {})
+                if isinstance(info, dict) and "risk" in info:
+                    pc_r = max(0, min(100, int(info["risk"])))
+                    pc_t = str(info.get("type", "Clean"))
+                    risk_sources.append({"api": "ProxyCheck", "raw": f"{pc_r} ({pc_t})", "score": pc_r, "weight": 0.20})
+            except Exception:
+                pass
+
+    # 5. Scamalytics (fraud score 0-100)
+    if raw_ip and re.match(r'^[0-9a-fA-F.:]+$', raw_ip):
+        sc_txt = _http_get_text(f"https://scamalytics.com/ip/{raw_ip}", timeout=7)
+        if sc_txt:
+            ms = re.search(r'"score"\s*:\s*"(\d+)"', sc_txt)
+            mr = re.search(r'"risk"\s*:\s*"([^"]+)"', sc_txt)
+            if ms:
+                sc_v = max(0, min(100, int(ms.group(1))))
+                sc_r = mr.group(1) if mr else ""
+                risk_sources.append({"api": "Scamalytics", "raw": f"{sc_v} ({sc_r})", "score": sc_v, "weight": 0.15})
+
+    # 6. ip-api.com (hosting / proxy / mobile flags)
+    ia_txt = _http_get_text("http://ip-api.com/json/?fields=hosting,proxy,mobile", timeout=6, ua="curl/8.0")
+    if ia_txt:
+        try:
+            d2 = json.loads(ia_txt)
             flags = [k for k in ("hosting", "proxy", "mobile") if d2.get(k)]
             meta["hosting"] = "/".join(flags) if flags else "clean/residential"
-    except Exception:
-        pass
+            sc_ia = 80 if d2.get("proxy") else (30 if d2.get("hosting") else 5)
+            risk_sources.append({"api": "ip-api", "raw": f"{meta['hosting']}({sc_ia})", "score": sc_ia, "weight": 0.10})
+        except Exception:
+            pass
 
+    # 7. 3-Zone DNSBL blacklist check (IPv4 only, fast local resolver)
+    dnsbl_hits = []
+    dnsbl_zones = [("Spamhaus", "zen.spamhaus.org"), ("Barracuda", "b.barracudacentral.org"), ("SpamCop", "bl.spamcop.net")]
+    if raw_ip and re.match(r'^\d+\.\d+\.\d+\.\d+$', raw_ip):
+        rev = ".".join(reversed(raw_ip.split(".")))
+        for z_lbl, zone in dnsbl_zones:
+            try:
+                socket.setdefaulttimeout(2.5)
+                socket.gethostbyname(f"{rev}.{zone}")
+                dnsbl_hits.append(z_lbl)
+            except Exception:
+                pass
+        sc_bl = min(100, len(dnsbl_hits) * 35)
+        risk_sources.append({"api": "DNSBL", "raw": f"{len(dnsbl_hits)}/3({sc_bl})", "score": sc_bl, "weight": 0.05})
+
+    # Compute weighted composite risk score (0-100, lower is cleaner)
+    if risk_sources:
+        w_sum = sum(x["weight"] for x in risk_sources)
+        comp_risk = round(sum(x["score"] * x["weight"] for x in risk_sources) / max(1e-6, w_sum), 1)
+    else:
+        comp_risk = 0.0
+    comp_tier = "low" if comp_risk <= 25 else ("mid" if comp_risk <= 55 else "high")
+
+    # Platform HTTP reachability probes
     probes = []
     denied = 0
     for name, url in UNLOCK_PROBES:
-        rc, out, _ = run_cmd(f"curl -4 -sS -L -m 6 -A 'Mozilla/5.0' -o /dev/null -w '%{{http_code}}' '{url}'", timeout=10)
+        rc, out, _ = run_cmd(f"curl -sS -L -m 6 -A 'Mozilla/5.0' -o /dev/null -w '%{{http_code}}' {shlex.quote(url)}", timeout=10)
         code = int(out) if out.isdigit() else 0
-        # OpenAI /v1/models returns 401 when accessible without API key (403/451/429 = geo/CF blocked)
         ok = (200 <= code < 400) or (name == "OpenAI" and code == 401)
         if not ok:
             denied += 1
@@ -727,6 +878,9 @@ def run_ip_quality_tests():
     return {
         "meta": meta, "probes": probes, "denied_count": denied, "total_probes": total_p,
         "denial_pct": denial_pct, "risk": risk, "port25_open": p25_open,
+        "composite_risk": comp_risk, "composite_tier": comp_tier,
+        "risk_sources": [{"api": x["api"], "raw": x["raw"], "score": x["score"]} for x in risk_sources],
+        "dnsbl_hits": dnsbl_hits, "dnsbl_total": len(dnsbl_zones),
     }
 
 
@@ -734,21 +888,23 @@ def run_metadata_bench(work_dir):
     mdir = os.path.join(work_dir, "meta_10k")
     os.makedirs(mdir, exist_ok=True)
     payload, n = b"0" * 4096, 10000
-    t0 = time.perf_counter()
-    for i in range(n):
-        with open(os.path.join(mdir, f"f{i}"), "wb") as f: f.write(payload)
-    tc = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    for i in range(n): os.stat(os.path.join(mdir, f"f{i}"))
-    ts = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    for i in range(n):
-        with open(os.path.join(mdir, f"f{i}"), "rb") as f: _ = f.read()
-    tr = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    for i in range(n): os.unlink(os.path.join(mdir, f"f{i}"))
-    td = time.perf_counter() - t0
-    shutil.rmtree(mdir, ignore_errors=True)
+    try:
+        t0 = time.perf_counter()
+        for i in range(n):
+            with open(os.path.join(mdir, f"f{i}"), "wb") as f: f.write(payload)
+        tc = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for i in range(n): os.stat(os.path.join(mdir, f"f{i}"))
+        ts = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for i in range(n):
+            with open(os.path.join(mdir, f"f{i}"), "rb") as f: _ = f.read()
+        tr = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for i in range(n): os.unlink(os.path.join(mdir, f"f{i}"))
+        td = time.perf_counter() - t0
+    finally:
+        shutil.rmtree(mdir, ignore_errors=True)
     return {
         "files": n,
         "create_fps": round(n / max(tc, 1e-6), 1), "stat_fps": round(n / max(ts, 1e-6), 1),
@@ -757,25 +913,51 @@ def run_metadata_bench(work_dir):
 
 
 def parse_iostat_minutes(log_path, dev_short, seq_minutes):
+    """Header-aware iostat -dxm parser compatible with both sysstat 11.x and 12.x."""
     if not os.path.exists(log_path): return []
+    col_map = {}
     samples = []
     with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             parts = line.split()
-            if len(parts) >= 14 and parts[0] == dev_short:
-                try: samples.append([float(x) for x in parts[1:]])
-                except Exception: pass
+            if not parts: continue
+            if parts[0] == "Device" or parts[0] == "Device:":
+                for idx, h in enumerate(parts[1:]):
+                    col_map[h.lower()] = idx
+                continue
+            if len(parts) >= 12 and parts[0] == dev_short:
+                try:
+                    vals = [float(x) for x in parts[1:]]
+                    i_rs = col_map.get("r/s", 0)
+                    i_rmb = col_map.get("rmb/s", col_map.get("rkB/s".lower(), 1))
+                    i_ws = col_map.get("w/s", 5)
+                    i_wmb = col_map.get("wmb/s", col_map.get("wkB/s".lower(), 6))
+                    i_wa = col_map.get("w_await", col_map.get("await", 10))
+                    i_ut = col_map.get("%util", len(vals) - 1)
+                    samples.append((
+                        vals[i_rs] if i_rs < len(vals) else 0.0,
+                        vals[i_rmb] if i_rmb < len(vals) else 0.0,
+                        vals[i_ws] if i_ws < len(vals) else 0.0,
+                        vals[i_wmb] if i_wmb < len(vals) else 0.0,
+                        vals[i_wa] if i_wa < len(vals) else 0.0,
+                        vals[i_ut] if i_ut < len(vals) else 0.0,
+                    ))
+                except Exception:
+                    pass
     minutes = []
     for i in range(0, len(samples), 12):
         chunk = samples[i:i + 12]
         if not chunk: continue
         m_idx = len(minutes) + 1
-        avg = [sum(row[c] for row in chunk) / len(chunk) for c in range(len(chunk[0]))]
+        n = len(chunk)
         minutes.append({
             "min": m_idx, "is_seq": m_idx <= max(1, seq_minutes),
-            "r_mb": round(avg[1], 2), "w_mb": round(avg[6], 2) if len(avg) > 6 else 0.0,
-            "r_s": round(avg[0], 1), "w_s": round(avg[5], 1) if len(avg) > 6 else 0.0,
-            "w_await": round(avg[10], 2) if len(avg) > 10 else 0.0, "util": round(avg[-1], 1),
+            "r_s": round(sum(r[0] for r in chunk) / n, 1),
+            "r_mb": round(sum(r[1] for r in chunk) / n, 2),
+            "w_s": round(sum(r[2] for r in chunk) / n, 1),
+            "w_mb": round(sum(r[3] for r in chunk) / n, 2),
+            "w_await": round(sum(r[4] for r in chunk) / n, 2),
+            "util": round(sum(r[5] for r in chunk) / n, 1),
         })
     return minutes
 
@@ -794,7 +976,7 @@ def build_sections(data, lang=None, site_url=None):
     t, p = data["topology"], data["plan"]
     sel = data.get("selected", {})
 
-    # Page 0: Overview & Topology + ioping (clean HardwareQuality layout, zero credits wall)
+    # Page 0: Overview & Topology + Quantifiable Scores + ioping (clean categorized layout)
     sec_overview = [
         "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
         f"               {C_B}{L['title']}: {C_CYN}{t['masked_ip']}{C_RST}",
@@ -803,6 +985,7 @@ def build_sections(data, lang=None, site_url=None):
         f"     {L['time_ver'].format(t=data['report_time'], v=data['version'])}",
         "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
         L["s1"],
+        f"{C_YEL}{L['grp_hw']}{C_RST}",
         f"{C_CYN}{L['k_virt']}{C_GRN}{t['virt']} · {t.get('profile','vps').upper()} ({t['arch']}){C_RST}",
         f"{C_CYN}{L['k_os']}{C_GRN}{t['os']}{C_RST}",
         f"{C_CYN}{L['k_cpu']}{C_INV} {t['cpu_model']} {C_RST}",
@@ -812,7 +995,18 @@ def build_sections(data, lang=None, site_url=None):
         f"{C_CYN}{L['k_dev']}{C_GRN}{L['dev_val'].format(dev=t['mount_dev'], fs=t['fs_type'], rota=t['rotational'], sched=t['scheduler'])}{C_RST}",
         f"{C_CYN}{L['k_cache']}{C_GRN}{L['cache_val'].format(wc=t['write_cache'], ra=t['read_ahead_kb'], sec=t['sector'], trim=L['trim_yes'] if t['trim_supported'] else L['trim_no'])}{C_RST}",
         f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'], ioe=p.get('ioengine','libaio'), dir=p.get('direct',1))}{C_RST}",
+        "",
+        f"{C_YEL}{L['grp_eval']}{C_RST}",
     ]
+    d_sc = data.get("disk_score")
+    if d_sc:
+        ds_col = C_BG_GRN if d_sc["score"] >= 70 else (C_BG_YEL if d_sc["score"] >= 45 else C_BG_RED)
+        sec_overview.append(
+            f"{C_CYN}{L['k_dscore']}{ds_col} {d_sc['score']:.1f} / 100 · {d_sc['grade']} {C_RST}"
+        )
+        sec_overview.append(
+            f"                        {C_GRN}╚═ {L['ds_sub'].format(s_seq=d_sc['s_seq'], s_4k=d_sc['s_4k'], s_lat=d_sc['s_lat'], s_conc=d_sc['s_conc'], s_sust=d_sc['s_sust'], s_meta=d_sc['s_meta'])}{C_RST}"
+        )
     os_idx = data.get("overselling")
     if os_idx:
         t_col = {"t0": C_BG_GRN, "t1": C_BG_GRN, "t2": C_BG_YEL, "t3": C_BG_RED}.get(os_idx["tier"], C_BG_YEL)
@@ -822,15 +1016,6 @@ def build_sections(data, lang=None, site_url=None):
         )
         sec_overview.append(
             f"                        {C_GRN}╚═ {L['os_sub'].format(media=os_idx['media'], d_bw=os_idx['d_bw'], d_4k=os_idx['d_4k'], d_lat=os_idx['d_lat'], d_drop=os_idx['d_drop'])}{C_RST}"
-        )
-    d_sc = data.get("disk_score")
-    if d_sc:
-        ds_col = C_BG_GRN if d_sc["score"] >= 70 else (C_BG_YEL if d_sc["score"] >= 45 else C_BG_RED)
-        sec_overview.append(
-            f"{C_CYN}{L['k_dscore']}{ds_col} {d_sc['score']:.1f} / 100 · {d_sc['grade']} {C_RST}"
-        )
-        sec_overview.append(
-            f"                        {C_GRN}╚═ {L['ds_sub'].format(s_seq=d_sc['s_seq'], s_4k=d_sc['s_4k'], s_lat=d_sc['s_lat'], s_conc=d_sc['s_conc'], s_sust=d_sc['s_sust'], s_meta=d_sc['s_meta'])}{C_RST}"
         )
     gb = data.get("geekbench")
     if not gb:
@@ -855,18 +1040,23 @@ def build_sections(data, lang=None, site_url=None):
             f"{C_CYN}{L['k_swrite']}{C_GRN}{io.get('sync_write','N/A')}{C_RST}",
         ]
 
-    # Page 1: Disk Matrix + Production fsync + High-Concurrency Small-IO
+    # Page 1: Disk Matrix (grouped into Sequential vs Random) + Production fsync + High-Concurrency
     sec_disk = [L["s3"]]
     if not sel.get("matrix", True) or not data.get("matrix"):
         sec_disk.append(f"{C_CYN}{L['k_res']}{skip}")
     else:
-        sec_disk.append(f"{C_CYN}{L['th_item']:<20} {L['th_r']:<22} {L['th_w']:<22} {'p95':>8} {'p99':>8}{C_RST}")
-        for row in data["matrix"]:
-            if row.get("error"): continue
-            rs = f"{row['r_bw_mbs']:.2f}MB/s ({row['r_iops']:.0f})" if row["r_iops"] > 0 else "-"
-            ws = f"{row['w_bw_mbs']:.2f}MB/s ({row['w_iops']:.0f})" if row["w_iops"] > 0 else "-"
-            col = _color_bw(max(row["r_bw_mbs"], row["w_bw_mbs"]))
-            sec_disk.append(f"{C_CYN}{row['name']:<20}{C_RST} {col}{rs:<22} {ws:<22}{C_RST} {max(row['r_p95_ms'],row['w_p95_ms']):>6.1f}ms {max(row['r_p99_ms'],row['w_p99_ms']):>6.1f}ms")
+        seq_rows = [r for r in data["matrix"] if not r.get("error") and r["name"].startswith(("SEQ", "BUF"))]
+        rnd_rows = [r for r in data["matrix"] if not r.get("error") and r["name"].startswith("RND")]
+        hdr = f"{C_CYN}{L['th_item']:<20} {L['th_r']:<22} {L['th_w']:<22} {'p95':>8} {'p99':>8}{C_RST}"
+        for grp_lbl, rows in ((L["grp_seq"], seq_rows), (L["grp_rnd"], rnd_rows)):
+            if not rows: continue
+            sec_disk.append(f"{C_YEL}{grp_lbl}{C_RST}")
+            sec_disk.append(hdr)
+            for row in rows:
+                rs = f"{row['r_bw_mbs']:.2f}MB/s ({row['r_iops']:.0f})" if row["r_iops"] > 0 else "-"
+                ws = f"{row['w_bw_mbs']:.2f}MB/s ({row['w_iops']:.0f})" if row["w_iops"] > 0 else "-"
+                col = _color_bw(max(row["r_bw_mbs"], row["w_bw_mbs"]))
+                sec_disk.append(f"{C_CYN}{row['name']:<20}{C_RST} {col}{rs:<22} {ws:<22}{C_RST} {max(row['r_p95_ms'],row['w_p95_ms']):>6.1f}ms {max(row['r_p99_ms'],row['w_p99_ms']):>6.1f}ms")
 
     sec_disk += ["", L["s4"]]
     if not sel.get("prod", True) or not data.get("production"):
@@ -908,17 +1098,20 @@ def build_sections(data, lang=None, site_url=None):
                 col = C_GRN if pt["w_mb"] >= 50 else C_YEL
                 sec_endurance.append(f"{L['min_fmt'].format(m=pt['min'])}  {stg:<13} {col}{pt['r_mb']:>8.2f} {pt['w_mb']:>9.2f}{C_RST} {pt['r_s']:>7.1f} {pt['w_s']:>7.1f} {pt['w_await']:>7.1f}ms {pt['util']:>6.1f}%")
 
-    # Page 3: Global Network & IP Quality + Access Denial Probability
+    # Page 3: Global Network (grouped by region) & Multi-Source IP Quality + Risk Breakdown
     sec_netip = [L["s7"]]
     net = data.get("network")
     if not sel.get("network", True) or not net:
         sec_netip.append(f"{C_CYN}{L['k_res']}{skip}")
     else:
-        sec_netip.append(f"{C_CYN}{L['th_node']:<20} {L['th_rtt']:<28} {L['th_loss']:>8}{C_RST}")
+        sec_netip.append(f"{C_CYN}{L['th_node']:<24} {L['th_rtt']:<28} {L['th_loss']:>8}{C_RST}")
+        reg_tags = {"(JP)": L["reg_ap"], "(SG)": L["reg_ap"], "(HK)": L["reg_ap"], "(US)": L["reg_us"], "(DE)": L["reg_eu"], "(UK)": L["reg_eu"], "(NL)": L["reg_eu"]}
         for h in net.get("hubs", []):
+            rtag = next((v for k, v in reg_tags.items() if k in h["hub"]), "")
+            h_lbl = f"[{rtag}] {h['hub']}" if rtag else h["hub"]
             rtt_s = f"{h['min']:.1f} / {h['avg']:.1f} / {h['max']:.1f} ms" if h["avg"] >= 0 else "Timeout"
             col = C_GRN if 0 <= h["avg"] < 120 else (C_YEL if h["avg"] >= 0 else C_RED)
-            sec_netip.append(f"{C_CYN}{h['hub']:<20}{C_RST} {col}{rtt_s:<28}{C_RST} {h['loss']:>6.0f}%")
+            sec_netip.append(f"{C_CYN}{h_lbl:<24}{C_RST} {col}{rtt_s:<28}{C_RST} {h['loss']:>6.0f}%")
         dl_parts = [f"{d['name']}: {d['mbs']} MB/s ({d['mbps']} Mbps)" for d in net.get("downloads", [])]
         sec_netip.append(f"{C_CYN}{L['k_dl']}{C_GRN}{' | '.join(dl_parts)}{C_RST}")
 
@@ -930,11 +1123,31 @@ def build_sections(data, lang=None, site_url=None):
         im = ipq["meta"]
         rk_map = {"low": (C_BG_GRN, L["risk_low"]), "mid": (C_BG_YEL, L["risk_mid"]), "high": (C_BG_RED, L["risk_high"])}
         rk_col, rk_lbl = rk_map.get(ipq["risk"], (C_BG_YEL, ipq["risk"]))
+        cr_col, cr_lbl = rk_map.get(ipq.get("composite_tier", "mid"), (C_BG_YEL, ""))
         p25_badge = f"{C_BG_GRN} ✔ {L['p25_ok']} {C_RST}" if ipq["port25_open"] else f"{C_BG_RED} ✘ {L['p25_no']} {C_RST}"
+        bl_hits = ipq.get("dnsbl_hits", [])
+        bl_tot = ipq.get("dnsbl_total", 3)
+        bl_badge = f"{C_BG_GRN} ✔ 0/{bl_tot} Clean {C_RST}" if not bl_hits else f"{C_BG_RED} ✘ {len(bl_hits)}/{bl_tot} ({','.join(bl_hits)}) {C_RST}"
+
         sec_netip += [
+            f"{C_YEL}{L['grp_ip_base']}{C_RST}",
             f"{C_CYN}{L['k_asn']}{C_GRN}{im['asn']} ({im['org']}) · {im['location']}{C_RST}",
-            f"{C_CYN}{L['k_ipattr']}{C_YEL}{im['hosting']}{C_RST}",
-            f"{C_CYN}{L['k_p25']}{p25_badge}",
+            f"{C_CYN}{L['k_ipattr']}{C_YEL}{im.get('native_type', 'Unknown')} · ip-api: {im['hosting']}{C_RST}",
+            f"{C_CYN}{L['k_ping0']}{C_GRN}{im.get('ping0_geo', 'N/A')}{C_RST}",
+            f"{C_CYN}{L['k_p25']}{p25_badge}   {C_CYN}{L['k_dnsbl']}{bl_badge}",
+            "",
+            f"{C_YEL}{L['grp_ip_risk']}{C_RST}",
+            f"{C_CYN}{L['k_risk']}{cr_col} {ipq.get('composite_risk', 0):.1f} / 100 · {cr_lbl} {C_RST}",
+        ]
+        srcs = ipq.get("risk_sources", [])
+        if srcs:
+            src_strs = [f"{x['api']}: {x['raw']}" for x in srcs]
+            sec_netip.append(f"{C_CYN}{L['k_risk_src']}{C_GRN}{' | '.join(src_strs[:3])}{C_RST}")
+            if len(src_strs) > 3:
+                sec_netip.append(f"                        {C_GRN}{' | '.join(src_strs[3:])}{C_RST}")
+        sec_netip += [
+            "",
+            f"{C_YEL}{L['grp_ip_plat']}{C_RST}",
             f"{C_CYN}{L['k_deny']}{rk_col} {ipq['denial_pct']}% ({ipq['denied_count']}/{ipq['total_probes']}) {rk_lbl} {C_RST}",
         ]
         row_items = []
@@ -1346,7 +1559,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.7"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.8"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))

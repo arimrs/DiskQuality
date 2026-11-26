@@ -2,7 +2,7 @@
 
 # DiskQuality
 
-[![Version](https://img.shields.io/badge/version-v1.0.7-22c55e.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.8-22c55e.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux VPS benchmark suite built for **PT seedboxes, storage VPS, and backup servers**, paired with a minimalist paginated report server.
