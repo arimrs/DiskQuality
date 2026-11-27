@@ -1,5 +1,5 @@
 [Unit]
-Description=DiskQuality Ephemeral Script & 1h-TTL Query Server
+Description=DiskQuality Persistent Report & Script Server
 After=network-online.target
 
 [Service]

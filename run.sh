@@ -59,7 +59,7 @@ cleanup_env() {
         if [[ "${LANG_CODE:-zh}" == "en" ]]; then
             echo -e "\n${YELLOW}[Abort Cleanup] Cleaned up ${WORK_DIR} and temporary scripts safely (´• ω •\`)${RESET}" >&2
         else
-            echo -e "\n${YELLOW}[中断清理] 已彻底清理临时路径 ${WORK_DIR} 与积累脚本文件 (´• ω •\`)${RESET}" >&2
+            echo -e "\n${YELLOW}[中断清理] 已彻底清理临时路径 ${WORK_DIR} 与临时脚本文件 (´• ω •\`)${RESET}" >&2
         fi
     fi
 }
@@ -137,18 +137,18 @@ if [[ "$LANG_CODE" == "en" ]]; then
     echo -e "${GREEN}Run Time (Taipei Time):${RESET} ${TPE_TIME}  |  ${GREEN}Total Runs:${RESET} ${TOTAL_RUNS}  |  ${GREEN}Today Runs:${RESET} ${TODAY_RUNS}"
     echo ""
     echo -e "${CYAN}[Acknowledgments & Upstream Tools]${RESET}"
-    echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping)"
-    echo "  · sysstat (https://github.com/sysstat/sysstat) | smartmontools (https://www.smartmontools.org)"
-    echo "  · e2fsprogs (https://e2fsprogs.sourceforge.net) | curl (https://curl.se) | ipinfo.io"
+    echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping) | Geekbench (https://www.geekbench.com)"
+    echo "  · sysstat (https://github.com/sysstat/sysstat) | smartmontools (https://www.smartmontools.org) | e2fsprogs"
+    echo "  · IPPure (https://ippure.com) | IP2Location (https://www.ip2location.io) | ping0.cc | ProxyCheck | Scamalytics"
     echo "  · Cloudflare Speed (https://speed.cloudflare.com) | CacheFly (https://www.cachefly.com)"
     echo "  · Credits: NodeQuality (github.com/LloydAsp/NodeQuality) | HardwareQuality & IPQuality (github.com/xykt)"
 else
     echo -e "${GREEN}运行时间 (Taipei Time)：${RESET}${TPE_TIME}  |  ${GREEN}累计运行：${RESET}${TOTAL_RUNS} 次  |  ${GREEN}今日运行：${RESET}${TODAY_RUNS} 次"
     echo ""
     echo -e "${CYAN}【致谢与底层检测工具原站】${RESET}"
-    echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping)"
-    echo "  · sysstat (https://github.com/sysstat/sysstat) | smartmontools (https://www.smartmontools.org)"
-    echo "  · e2fsprogs (https://e2fsprogs.sourceforge.net) | curl (https://curl.se) | ipinfo.io"
+    echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping) | Geekbench (https://www.geekbench.com)"
+    echo "  · sysstat (https://github.com/sysstat/sysstat) | smartmontools (https://www.smartmontools.org) | e2fsprogs"
+    echo "  · IPPure (https://ippure.com) | IP2Location (https://www.ip2location.io) | ping0.cc | ProxyCheck | Scamalytics"
     echo "  · Cloudflare Speed (https://speed.cloudflare.com) | CacheFly (https://www.cachefly.com)"
     echo "  · 致敬项目：NodeQuality (github.com/LloydAsp/NodeQuality) | HardwareQuality & IPQuality (github.com/xykt)"
 fi
