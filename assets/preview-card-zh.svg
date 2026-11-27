@@ -1,0 +1,342 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1411" viewBox="0 0 1200 1411" role="img" aria-labelledby="card-title">
+<title id="card-title">DiskQuality · 可视化战报</title>
+<defs><linearGradient id="card-hero"><stop stop-color="#11282c"/><stop offset="1" stop-color="#151c31"/></linearGradient>
+<linearGradient id="card-accent"><stop stop-color="#22c55e"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+<linearGradient id="card-area" x2="0" y2="1"><stop stop-color="#22c55e" stop-opacity=".42"/><stop offset="1" stop-color="#22c55e" stop-opacity=".03"/></linearGradient>
+<pattern id="card-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#7ba4bf" opacity=".18"/></pattern></defs>
+<g font-family="system-ui,Segoe UI,Microsoft YaHei,PingFang SC,Noto Sans CJK SC,sans-serif">
+<rect x="0" y="0" width="1200" height="1411" rx="22" fill="#0b0f17" stroke="none"/>
+<rect x="1" y="1" width="1198" height="1409" rx="21" fill="none" stroke="#232d42"/>
+<rect x="24" y="24" width="1152" height="166" rx="17" fill="url(#card-hero)" stroke="#2a3c51"/>
+<rect x="25" y="25" width="1150" height="164" rx="16" fill="url(#card-grid)" stroke="none"/>
+<rect x="44" y="46" width="32" height="5" rx="2.5" fill="url(#card-accent)" stroke="none"/>
+<text x="86" y="53" fill="#92e7da" font-size="12" font-weight="750" text-anchor="start">客观存储遥测 · 示例数据</text>
+<text x="42" y="113" fill="#edf4ff" font-size="59" font-weight="790" text-anchor="start">DiskQuality</text>
+<rect x="44" y="135" width="164" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="126" y="151" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">v1.0.9 (2026.11.27)</text>
+<rect x="216" y="135" width="117" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="274.5" y="151" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">163.245.*.*</text>
+<rect x="341" y="135" width="206" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="444" y="151" fill="#a78bfa" font-size="11" font-weight="700" text-anchor="middle">vps / KVM / x86_64</text>
+<line x1="570" y1="46" x2="570" y2="167" stroke="#33475c" stroke-width="1" stroke-linecap="round"/>
+<text x="595" y="54" fill="#92e7da" font-size="11" font-weight="700" text-anchor="start">CPU</text>
+<text x="651" y="54" fill="#edf4ff" font-size="13" font-weight="650" text-anchor="start">Intel(R) Xeon(R) Gold 6230R CPU @ 2.10GHz</text>
+<text x="1154" y="54" fill="#a2b2c9" font-size="12" font-weight="500" text-anchor="end">1 核</text>
+<text x="595" y="80" fill="#92e7da" font-size="11" font-weight="700" text-anchor="start">磁盘</text>
+<text x="651" y="80" fill="#edf4ff" font-size="13" font-weight="650" text-anchor="start">QEMU HARDDISK</text>
+<text x="595" y="112" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">已用 93.0 GB</text>
+<text x="780" y="112" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">可用 840.0 GB</text>
+<text x="965" y="112" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">总容量 983.0 GB</text>
+<rect x="595" y="122" width="558" height="7" rx="3.5" fill="#26344a" stroke="none"/>
+<rect x="595" y="122" width="52.7915" height="7" rx="3.5" fill="#22c55e" stroke="none"/>
+<rect x="647.791" y="122" width="476.826" height="7" rx="3.5" fill="#38bdf8" stroke="none"/>
+<text x="595" y="159" fill="#a2b2c9" font-size="12" font-weight="500" text-anchor="start">2026-11-20 17:31:54 CST</text>
+<rect x="24" y="206" width="276" height="187" rx="16" fill="#131926" stroke="#232d42"/>
+<rect x="42" y="226" width="3" height="14" rx="1.5" fill="#22c55e" stroke="none"/>
+<text x="53" y="238" fill="#edf4ff" font-size="15" font-weight="740" text-anchor="start">硬盘综合评分</text>
+<rect x="316" y="206" width="276" height="187" rx="16" fill="#131926" stroke="#232d42"/>
+<rect x="334" y="226" width="3" height="14" rx="1.5" fill="#f59e0b" stroke="none"/>
+<text x="345" y="238" fill="#edf4ff" font-size="15" font-weight="740" text-anchor="start">超售指数 ↓</text>
+<rect x="608" y="206" width="276" height="187" rx="16" fill="#131926" stroke="#232d42"/>
+<rect x="626" y="226" width="3" height="14" rx="1.5" fill="#a78bfa" stroke="none"/>
+<text x="637" y="238" fill="#edf4ff" font-size="15" font-weight="740" text-anchor="start">CPU Geekbench</text>
+<rect x="900" y="206" width="276" height="187" rx="16" fill="#131926" stroke="#232d42"/>
+<rect x="918" y="226" width="3" height="14" rx="1.5" fill="#38bdf8" stroke="none"/>
+<text x="929" y="238" fill="#edf4ff" font-size="15" font-weight="740" text-anchor="start">IP 综合风控 ↓</text>
+<circle cx="94" cy="312" r="42" fill="none" stroke="#26344a" stroke-width="7"/>
+<circle cx="94" cy="312" r="42" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-dasharray="263.8938 263.8938" stroke-dashoffset="178.3922" transform="rotate(-90 94 312)"/>
+<text x="94" y="319" fill="#edf4ff" font-size="23" font-weight="760" text-anchor="middle">32.4</text>
+<text x="151" y="311" fill="#a2b2c9" font-size="17" font-weight="500" text-anchor="start">/ 100</text>
+<rect x="151" y="326" width="86" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="194" y="342" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">等级 D</text>
+<circle cx="386" cy="312" r="42" fill="none" stroke="#26344a" stroke-width="7"/>
+<circle cx="386" cy="312" r="42" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-dasharray="263.8938 263.8938" stroke-dashoffset="238.8239" transform="rotate(-90 386 312)"/>
+<text x="386" y="319" fill="#edf4ff" font-size="23" font-weight="760" text-anchor="middle">9.5</text>
+<text x="444" y="300" fill="#edf4ff" font-size="12" font-weight="670" text-anchor="start">极低/接近独服</text>
+<rect x="442" y="316" width="130" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="507" y="332" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">基准 · HDD</text>
+<rect x="626" y="251" width="230" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="741" y="267" fill="#a78bfa" font-size="11" font-weight="700" text-anchor="middle">Geekbench 5</text>
+<text x="628" y="300" fill="#edf4ff" font-size="12" font-weight="700" text-anchor="start">单核</text>
+<text x="865" y="300" fill="#edf4ff" font-size="15" font-weight="720" text-anchor="end">713</text>
+<rect x="628" y="307" width="237" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="628" y="307" width="226.213" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="628" y="340" fill="#edf4ff" font-size="12" font-weight="700" text-anchor="start">多核</text>
+<text x="865" y="340" fill="#edf4ff" font-size="15" font-weight="720" text-anchor="end">747</text>
+<rect x="628" y="347" width="237" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="628" y="347" width="237" height="5" rx="2.5" fill="#a78bfa" stroke="none"/>
+<circle cx="971" cy="312" r="42" fill="none" stroke="#26344a" stroke-width="7"/>
+<circle cx="971" cy="312" r="42" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round" stroke-dasharray="263.8938 263.8938" stroke-dashoffset="198.9759" transform="rotate(-90 971 312)"/>
+<text x="971" y="319" fill="#edf4ff" font-size="23" font-weight="760" text-anchor="middle">24.6</text>
+<rect x="1025" y="256" width="137" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1093.5" y="272" fill="#a78bfa" font-size="10" font-weight="700" text-anchor="middle">Native · 机房</text>
+<text x="1028" y="297" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">极低/低风控</text>
+<rect x="1025" y="306" width="137" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1093.5" y="322" fill="#f43f5e" font-size="10" font-weight="700" text-anchor="middle">Port 25 · 未开放</text>
+<rect x="1025" y="336" width="137" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1093.5" y="352" fill="#a2b2c9" font-size="11" font-weight="700" text-anchor="middle">DNSBL · 0/3</text>
+<rect x="24" y="409" width="432" height="360" rx="16" fill="#131926" stroke="#232d42"/>
+<text x="44" y="441" fill="#edf4ff" font-size="17" font-weight="750" text-anchor="start">六维硬盘雷达</text>
+<polygon points="241.0,583.5 264.8,597.2 264.8,624.8 241.0,638.5 217.2,624.8 217.2,597.2" fill="none" stroke="#26344a"/>
+<text x="247" y="594.5" fill="#879ab5" font-size="9" font-weight="500" text-anchor="start">25%</text>
+<polygon points="241.0,556.0 288.6,583.5 288.6,638.5 241.0,666.0 193.4,638.5 193.4,583.5" fill="none" stroke="#26344a"/>
+<text x="247" y="567" fill="#879ab5" font-size="9" font-weight="500" text-anchor="start">50%</text>
+<polygon points="241.0,528.5 312.4,569.8 312.4,652.2 241.0,693.5 169.6,652.2 169.6,569.8" fill="none" stroke="#26344a"/>
+<text x="247" y="539.5" fill="#879ab5" font-size="9" font-weight="500" text-anchor="start">75%</text>
+<polygon points="241.0,501.0 336.3,556.0 336.3,666.0 241.0,721.0 145.7,666.0 145.7,556.0" fill="none" stroke="#26344a"/>
+<text x="247" y="512" fill="#879ab5" font-size="9" font-weight="500" text-anchor="start">100%</text>
+<line x1="241" y1="611" x2="241" y2="501" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="241" y="475.2" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="middle">顺序 35</text>
+<line x1="241" y1="611" x2="336.263" y2="556" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="362.936" y="545.6" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="start">4K 10</text>
+<line x1="241" y1="611" x2="336.263" y2="666" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="362.936" y="686.4" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="start">延迟 14</text>
+<line x1="241" y1="611" x2="241" y2="721" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="241" y="756.8" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="middle">并发 25</text>
+<line x1="241" y1="611" x2="145.737" y2="666" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="119.064" y="686.4" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="end">持久 50</text>
+<line x1="241" y1="611" x2="145.737" y2="556" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="119.064" y="545.6" fill="#edf4ff" font-size="12" font-weight="650" text-anchor="end">元数据 98</text>
+<polygon points="241.0,572.5 250.5,605.5 254.3,618.7 241.0,638.5 193.4,638.5 147.6,557.1" fill="#22c55e" fill-opacity=".20" stroke="#45dacc" stroke-width="2"/>
+<circle cx="241" cy="572.5" r="3.5" fill="#6ee7b7"/>
+<circle cx="250.526" cy="605.5" r="3.5" fill="#6ee7b7"/>
+<circle cx="254.337" cy="618.7" r="3.5" fill="#6ee7b7"/>
+<circle cx="241" cy="638.5" r="3.5" fill="#6ee7b7"/>
+<circle cx="193.369" cy="638.5" r="3.5" fill="#6ee7b7"/>
+<circle cx="147.642" cy="557.1" r="3.5" fill="#6ee7b7"/>
+<rect x="472" y="409" width="704" height="360" rx="16" fill="#131926" stroke="#232d42"/>
+<text x="492" y="441" fill="#edf4ff" font-size="17" font-weight="750" text-anchor="start">50% 容量持久曲线</text>
+<rect x="491" y="456" width="142" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="562" y="472" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">已写入 155.4 GB</text>
+<rect x="641" y="456" width="142" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="712" y="472" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">均速 265.1 MB/s</text>
+<rect x="791" y="456" width="142" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="862" y="472" fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">p99 112.7 ms</text>
+<rect x="533" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="590.4" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="647.8" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="705.2" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="762.6" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="820" y="546" width="57.5" height="171" rx="0" fill="#152b2c" stroke="none"/>
+<rect x="877.4" y="546" width="57.5" height="171" rx="0" fill="#22273e" stroke="none"/>
+<rect x="934.8" y="546" width="57.5" height="171" rx="0" fill="#22273e" stroke="none"/>
+<rect x="992.2" y="546" width="57.5" height="171" rx="0" fill="#22273e" stroke="none"/>
+<rect x="1049.6" y="546" width="57.5" height="171" rx="0" fill="#22273e" stroke="none"/>
+<text x="533" y="536" fill="#22c55e" font-size="11" font-weight="500" text-anchor="start">wMB/s</text>
+<text x="1107" y="536" fill="#f59e0b" font-size="11" font-weight="500" text-anchor="end">w_await · ms</text>
+<rect x="492" y="492" width="165" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="574.5" y="508" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">A · 顺序写入</text>
+<rect x="667" y="492" width="165" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="749.5" y="508" fill="#a78bfa" font-size="11" font-weight="700" text-anchor="middle">B · 随机混合</text>
+<line x1="533" y1="717" x2="1107" y2="717" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="525" y="721" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">0.0</text>
+<text x="1115" y="721" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">0.0</text>
+<line x1="533" y1="674.25" x2="1107" y2="674.25" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="525" y="678.25" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">74.7</text>
+<text x="1115" y="678.25" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">74.5</text>
+<line x1="533" y1="631.5" x2="1107" y2="631.5" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="525" y="635.5" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">149.5</text>
+<text x="1115" y="635.5" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">149.0</text>
+<line x1="533" y1="588.75" x2="1107" y2="588.75" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="525" y="592.75" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">224.2</text>
+<text x="1115" y="592.75" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">223.6</text>
+<line x1="533" y1="546" x2="1107" y2="546" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="525" y="550" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">298.9</text>
+<text x="1115" y="550" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">298.1</text>
+<path d="M561.70,616.16 C590.40,616.16 590.40,591.39 619.10,591.39 C647.80,591.39 647.80,566.81 676.50,566.81 C705.20,566.81 705.20,547.41 733.90,547.41 C762.60,547.41 762.60,546.00 791.30,546.00 C820.00,546.00 820.00,546.66 848.70,546.66 C877.40,546.66 877.40,715.83 906.10,715.83 C934.80,715.83 934.80,715.84 963.50,715.84 C992.20,715.84 992.20,715.84 1020.90,715.84 C1049.60,715.84 1049.60,715.87 1078.30,715.87 V717 H561.70 Z" fill="url(#card-area)"/>
+<path d="M561.70,616.16 C590.40,616.16 590.40,591.39 619.10,591.39 C647.80,591.39 647.80,566.81 676.50,566.81 C705.20,566.81 705.20,547.41 733.90,547.41 C762.60,547.41 762.60,546.00 791.30,546.00 C820.00,546.00 820.00,546.66 848.70,546.66 C877.40,546.66 877.40,715.83 906.10,715.83 C934.80,715.83 934.80,715.84 963.50,715.84 C992.20,715.84 992.20,715.84 1020.90,715.84 C1049.60,715.84 1049.60,715.87 1078.30,715.87" fill="none" stroke="#22c55e" stroke-width="2"/>
+<polyline points="561.70,657.57 619.10,673.08 676.50,679.49 733.90,684.57 791.30,685.11 848.70,684.90 906.10,548.82 963.50,546.00 1020.90,549.12 1078.30,546.65" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="561.7" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">1 分</text>
+<text x="676.5" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">3 分</text>
+<text x="733.9" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">4 分</text>
+<text x="791.3" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">5 分</text>
+<text x="906.1" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">7 分</text>
+<text x="1020.9" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">9 分</text>
+<text x="1078.3" y="737" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="middle">10 分</text>
+<rect x="24" y="785" width="589" height="407" rx="16" fill="#131926" stroke="#232d42"/>
+<text x="44" y="815" fill="#edf4ff" font-size="17" font-weight="750" text-anchor="start">FIO 矩阵与 PT / 备份</text>
+<text x="62" y="841" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">负载 / 方向</text>
+<text x="299" y="841" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">MB/s</text>
+<text x="418" y="841" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">IOPS</text>
+<text x="513" y="841" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">p99 ms</text>
+<rect x="36" y="852" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="868" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="868" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">SEQ1M Q32</text>
+<rect x="229" y="861" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="861" width="62" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="868" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300.10</text>
+<text x="418" y="868" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300</text>
+<text x="513" y="868" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">518.00</text>
+<text x="44" y="893" fill="#22c55e" font-size="11" font-weight="700" text-anchor="start">W</text>
+<text x="62" y="893" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">SEQ1M Q32</text>
+<rect x="229" y="886" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="886" width="57.1511" height="5" rx="2.5" fill="#22c55e" stroke="none"/>
+<text x="299" y="893" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">276.63</text>
+<text x="418" y="893" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">277</text>
+<text x="513" y="893" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">2768.24</text>
+<rect x="36" y="902" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="918" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="918" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">SEQ1M Q1</text>
+<rect x="229" y="911" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="911" width="31.0124" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="918" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">150.11</text>
+<text x="418" y="918" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">150</text>
+<text x="513" y="918" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">7.24</text>
+<text x="44" y="943" fill="#22c55e" font-size="11" font-weight="700" text-anchor="start">W</text>
+<text x="62" y="943" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">SEQ1M Q1</text>
+<rect x="229" y="936" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="936" width="61.3017" height="5" rx="2.5" fill="#22c55e" stroke="none"/>
+<text x="299" y="943" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">296.72</text>
+<text x="418" y="943" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">297</text>
+<text x="513" y="943" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">4.11</text>
+<rect x="36" y="952" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="968" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="968" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">RND4K Q1</text>
+<rect x="229" y="961" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="961" width="0.241719" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="968" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">1.17</text>
+<text x="418" y="968" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300</text>
+<text x="513" y="968" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">4.11</text>
+<text x="44" y="993" fill="#22c55e" font-size="11" font-weight="700" text-anchor="start">W</text>
+<text x="62" y="993" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">RND4K Q1</text>
+<rect x="229" y="986" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="986" width="0.241719" height="5" rx="2.5" fill="#22c55e" stroke="none"/>
+<text x="299" y="993" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">1.17</text>
+<text x="418" y="993" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300</text>
+<text x="513" y="993" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">4.15</text>
+<rect x="36" y="1002" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="1018" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="1018" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">RND4K Q64</text>
+<rect x="229" y="1011" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="1011" width="0.241719" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="1018" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">1.17</text>
+<text x="418" y="1018" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300</text>
+<text x="513" y="1018" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">1635.78</text>
+<text x="44" y="1043" fill="#22c55e" font-size="11" font-weight="700" text-anchor="start">W</text>
+<text x="62" y="1043" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">RND4K Q64</text>
+<rect x="229" y="1036" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="1036" width="0.241719" height="5" rx="2.5" fill="#22c55e" stroke="none"/>
+<text x="299" y="1043" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">1.17</text>
+<text x="418" y="1043" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">300</text>
+<text x="513" y="1043" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">1954.55</text>
+<rect x="36" y="1052" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="1068" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="1068" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">PT_SEED_16K_32T</text>
+<rect x="229" y="1061" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="1061" width="5.86738" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="1068" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">28.40</text>
+<text x="418" y="1068" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">1818</text>
+<text x="513" y="1068" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">76.72</text>
+<text x="44" y="1093" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="start">R</text>
+<text x="62" y="1093" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">BACKUP_64K_16T</text>
+<rect x="229" y="1086" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="1086" width="6.67311" height="5" rx="2.5" fill="#38bdf8" stroke="none"/>
+<text x="299" y="1093" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">32.30</text>
+<text x="418" y="1093" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">517</text>
+<text x="513" y="1093" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">69.84</text>
+<rect x="36" y="1102" width="565" height="24" rx="5" fill="#172131" stroke="none"/>
+<text x="44" y="1118" fill="#22c55e" font-size="11" font-weight="700" text-anchor="start">W</text>
+<text x="62" y="1118" fill="#edf4ff" font-size="11" font-weight="650" text-anchor="start">BACKUP_64K_16T</text>
+<rect x="229" y="1111" width="62" height="5" rx="2.5" fill="#26344a" stroke="none"/>
+<rect x="229" y="1111" width="6.23925" height="5" rx="2.5" fill="#22c55e" stroke="none"/>
+<text x="299" y="1118" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">30.20</text>
+<text x="418" y="1118" fill="#edf4ff" font-size="12" font-weight="500" text-anchor="start">483</text>
+<text x="513" y="1118" fill="#f59e0b" font-size="12" font-weight="500" text-anchor="start">92.18</text>
+<rect x="629" y="785" width="547" height="407" rx="16" fill="#131926" stroke="#232d42"/>
+<text x="649" y="815" fill="#edf4ff" font-size="17" font-weight="750" text-anchor="start">全球延迟与平台可达性</text>
+<text x="649" y="834" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="start">TCP RTT · ms</text>
+<text x="760" y="834" fill="#38bdf8" font-size="10" font-weight="650" text-anchor="start">亚太</text>
+<text x="809" y="834" fill="#a78bfa" font-size="10" font-weight="650" text-anchor="start">美洲</text>
+<text x="858" y="834" fill="#22c55e" font-size="10" font-weight="650" text-anchor="start">欧洲</text>
+<text x="1131" y="834" fill="#a2b2c9" font-size="10" font-weight="500" text-anchor="end">min / avg / max</text>
+<circle cx="649" cy="851" r="3" fill="#38bdf8"/>
+<text x="659" y="855" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Tokyo (JP)</text>
+<line x1="802" y1="851" x2="941" y2="851" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="897.958" y1="851" x2="902.198" y2="851" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+<circle cx="899.817" cy="851" r="4" fill="#38bdf8"/>
+<text x="954" y="855" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">165.2 / 168.4 / 172.5</text>
+<circle cx="649" cy="874" r="3" fill="#38bdf8"/>
+<text x="659" y="878" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Singapore (SG)</text>
+<line x1="802" y1="874" x2="941" y2="874" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="933.913" y1="874" x2="941" y2="874" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+<circle cx="936.295" cy="874" r="4" fill="#38bdf8"/>
+<text x="954" y="878" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">227.1 / 231.2 / 239.3</text>
+<circle cx="649" cy="897" r="3" fill="#38bdf8"/>
+<text x="659" y="901" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Hong Kong (HK)</text>
+<line x1="802" y1="897" x2="941" y2="897" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="916.139" y1="897" x2="920.844" y2="897" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+<circle cx="918.056" cy="897" r="4" fill="#38bdf8"/>
+<text x="954" y="901" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">196.5 / 199.8 / 204.6</text>
+<circle cx="649" cy="920" r="3" fill="#a78bfa"/>
+<text x="659" y="924" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Los Angeles (US)</text>
+<line x1="802" y1="920" x2="941" y2="920" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="836.735" y1="920" x2="841.208" y2="920" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/>
+<circle cx="838.42" cy="920" r="4" fill="#a78bfa"/>
+<text x="954" y="924" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">59.8 / 62.7 / 67.5</text>
+<circle cx="649" cy="943" r="3" fill="#a78bfa"/>
+<text x="659" y="947" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">New York (US)</text>
+<line x1="802" y1="943" x2="941" y2="943" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="802.813" y1="943" x2="803.162" y2="943" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/>
+<circle cx="803.046" cy="943" r="4" fill="#a78bfa"/>
+<text x="954" y="947" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">1.4 / 1.8 / 2.0</text>
+<circle cx="649" cy="966" r="3" fill="#22c55e"/>
+<text x="659" y="970" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Frankfurt (DE)</text>
+<line x1="802" y1="966" x2="941" y2="966" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="856.078" y1="966" x2="859.099" y2="966" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+<circle cx="857.298" cy="966" r="4" fill="#22c55e"/>
+<text x="954" y="970" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">93.1 / 95.2 / 98.3</text>
+<circle cx="649" cy="989" r="3" fill="#22c55e"/>
+<text x="659" y="993" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">London (UK)</text>
+<line x1="802" y1="989" x2="941" y2="989" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="845.216" y1="989" x2="848.004" y2="989" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+<circle cx="846.32" cy="989" r="4" fill="#22c55e"/>
+<text x="954" y="993" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">74.4 / 76.3 / 79.2</text>
+<circle cx="649" cy="1012" r="3" fill="#22c55e"/>
+<text x="659" y="1016" fill="#edf4ff" font-size="11" font-weight="620" text-anchor="start">Amsterdam (NL)</text>
+<line x1="802" y1="1012" x2="941" y2="1012" stroke="#293951" stroke-width="3" stroke-linecap="round"/>
+<line x1="850.908" y1="1012" x2="853.929" y2="1012" stroke="#22c55e" stroke-width="4" stroke-linecap="round"/>
+<circle cx="852.361" cy="1012" r="4" fill="#22c55e"/>
+<text x="954" y="1016" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">84.2 / 86.7 / 89.4</text>
+<text x="649" y="1049" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">大文件下行</text>
+<rect x="649" y="1057" width="238" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="768" y="1073" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">Cloudflare 50MB · 81.24 MB/s</text>
+<rect x="899" y="1057" width="238" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1018" y="1073" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">CacheFly 100MB · 67.52 MB/s</text>
+<text x="649" y="1108" fill="#a2b2c9" font-size="11" font-weight="500" text-anchor="start">平台可达性</text>
+<rect x="647" y="1118" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="695" y="1134" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ Cloudflare</text>
+<rect x="748" y="1118" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="796" y="1134" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ Google</text>
+<rect x="849" y="1118" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="897" y="1134" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ YouTube</text>
+<rect x="950" y="1118" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="998" y="1134" fill="#fb7185" font-size="9.5" font-weight="700" text-anchor="middle">✘ Netflix</text>
+<rect x="1051" y="1118" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1099" y="1134" fill="#fb7185" font-size="9.5" font-weight="700" text-anchor="middle">✘ Disney+</text>
+<rect x="647" y="1147" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="695" y="1163" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ TikTok</text>
+<rect x="748" y="1147" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="796" y="1163" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ OpenAI</text>
+<rect x="849" y="1147" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="897" y="1163" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ Reddit</text>
+<rect x="950" y="1147" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="998" y="1163" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ GitHub</text>
+<rect x="1051" y="1147" width="96" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1099" y="1163" fill="#6ee7a1" font-size="9.5" font-weight="700" text-anchor="middle">✔ Steam</text>
+<rect x="24" y="1208" width="1152" height="105" rx="16" fill="#131926" stroke="#232d42"/>
+<text x="44" y="1235" fill="#edf4ff" font-size="16" font-weight="750" text-anchor="start">元数据与介质寿命</text>
+<rect x="44" y="1245" width="266" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="177" y="1261" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">创建 · 22790 f/s</text>
+<rect x="323" y="1245" width="266" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="456" y="1261" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">Stat · 266700 f/s</text>
+<rect x="602" y="1245" width="266" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="735" y="1261" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">读取 · 73638 f/s</text>
+<rect x="881" y="1245" width="266" height="24" rx="12" fill="#192437" stroke="#2a3b53"/>
+<text x="1014" y="1261" fill="#22c55e" font-size="11" font-weight="700" text-anchor="middle">删除 · 74118 f/s</text>
+<text x="44" y="1291" fill="#a2b2c9" font-size="12" font-weight="500" text-anchor="start">SMART · Unavailable (KVM Shielded)</text>
+<text x="438" y="1291" fill="#a2b2c9" font-size="12" font-weight="500" text-anchor="start">Ext4 · 创建于 2025-08-11 13:32:02 UTC | 挂载次数 6 | 累计写入 258 GB</text>
+<line x1="25" y1="1329" x2="1175" y2="1329" stroke="#26344a" stroke-width="1" stroke-linecap="round"/>
+<text x="32" y="1358" fill="#38bdf8" font-size="13" font-weight="680" text-anchor="start">github.com/arimrs/DiskQuality</text>
+<text x="1168" y="1358" fill="#edf4ff" font-size="13" font-weight="620" text-anchor="end">bash &lt;(curl -sL https://test.sakurado.top)</text>
+<text x="32" y="1384" fill="#a2b2c9" font-size="12" font-weight="500" text-anchor="start">https://example.com/r/sample</text>
+</g></svg>

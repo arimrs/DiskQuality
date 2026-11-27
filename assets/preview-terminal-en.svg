@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1370" height="901" viewBox="0 0 1370 901" role="img" aria-labelledby="terminal-title">
+<title id="terminal-title">Overview</title>
+<defs><linearGradient id="terminal-bg" x2="0" y2="1"><stop stop-color="#12151c"/><stop offset="1" stop-color="#171b24"/></linearGradient>
+<linearGradient id="terminal-accent"><stop stop-color="#22c55e"/><stop offset=".5" stop-color="#06b6d4"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+<clipPath id="terminal-frame"><rect x=".5" y=".5" width="1369" height="900" rx="12"/></clipPath></defs>
+<rect x=".5" y=".5" width="1369" height="900" rx="12" fill="url(#terminal-bg)" stroke="#2a3244"/>
+<rect y="1" width="100%" height="3" fill="url(#terminal-accent)" clip-path="url(#terminal-frame)"/>
+<line x1="1" x2="1369" y1="39.5" y2="39.5" stroke="#2a3244"/>
+<circle cx="23" cy="22" r="3.5" fill="#a36879"/><circle cx="37" cy="22" r="3.5" fill="#a89267"/><circle cx="51" cy="22" r="3.5" fill="#689083"/>
+<rect x="1117" y="11" width="230" height="22" rx="11" fill="#1d2431" stroke="#2a3244"/>
+<text x="1232" y="26" text-anchor="middle" fill="#a9b8ce" font-family="system-ui,sans-serif" font-size="11">DiskQuality · Objective Telemetry</text>
+<g font-family="Sarasa Mono SC,Cascadia Mono,Consolas,Microsoft YaHei,PingFang SC,Noto Sans Mono CJK SC,monospace" font-size="17" xml:space="preserve" style="white-space:pre">
+<line x1="28" x2="1342" y1="56.5" y2="56.5" stroke="#344055"/>
+<text x="185.5" y="91" textLength="556.5" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0" font-weight="700">PT / Storage / Backup VPS Objective Benchmark Report:</text>
+<text x="752.5" y="91" textLength="115.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed" font-weight="700">163.245.*.*</text>
+<text x="185.5" y="120" textLength="388.5" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0" text-decoration="underline">https://github.com/arimrs/DiskQuality</text>
+<text x="196.0" y="149" textLength="441.0" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">bash &lt;(curl -sL https://test.sakurado.top)</text>
+<text x="80.5" y="178" textLength="378.0" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">Report Time: 2026-11-20 17:31:54 CST</text>
+<text x="479.5" y="178" textLength="10.5" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">|</text>
+<text x="511.0" y="178" textLength="294.0" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">Version: v1.0.9 (2026.11.27)</text>
+<line x1="28" x2="1342" y1="201.5" y2="201.5" stroke="#344055"/>
+<text x="28.0" y="236" textLength="451.5" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">1. Operating System &amp; Block Device Topology</text>
+<text x="28.0" y="265" textLength="283.5" lengthAdjust="spacingAndGlyphs" fill="#fcd34d">── [Hardware &amp; Topology] ──</text>
+<text x="28.0" y="294" textLength="157.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Virtualization:</text>
+<text x="364.0" y="294" textLength="189.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">KVM · VPS (x86_64)</text>
+<text x="28.0" y="323" textLength="126.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">OS / Kernel:</text>
+<text x="364.0" y="323" textLength="514.5" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">Debian GNU/Linux 13 (trixie) 6.12.113+deb13-amd64</text>
+<text x="28.0" y="352" textLength="105.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">CPU Model:</text>
+<rect x="362.0" y="335" width="455.5" height="24" rx="4.5" fill="#e2e8f0"/>
+<text x="374.5" y="352" textLength="430.5" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="700">Intel(R) Xeon(R) Gold 6230R CPU @ 2.10GHz</text>
+<rect x="362.0" y="364" width="529.0" height="24" rx="4.5" fill="#e2e8f0"/>
+<text x="374.5" y="381" textLength="504.0" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="700">╚═ 1 Core(s), 2095.078MHz, Load 0.01, 0.05, 0.02</text>
+<text x="28.0" y="410" textLength="147.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Memory / Swap:</text>
+<rect x="362.0" y="393" width="970.0" height="24" rx="4.5" fill="#e2e8f0"/>
+<text x="374.5" y="410" textLength="945.0" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="700">RAM 1973 MB, 已用 555 MB(28%), 可用 1418 MB(72%) | Swap 953 MB, 已用 0 MB(0%), 可用 953 MB</text>
+<text x="28.0" y="439" textLength="147.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Storage Media:</text>
+<rect x="362.0" y="422" width="581.5" height="24" rx="4.5" fill="#e2e8f0"/>
+<text x="374.5" y="439" textLength="136.5" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="700">QEMU HARDDISK</text>
+<text x="532.0" y="439" textLength="399.0" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="700">Total 983.0G, Used 93.0G, Avail 840.0G</text>
+<text x="28.0" y="468" textLength="136.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Block Device:</text>
+<text x="364.0" y="468" textLength="472.5" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">/dev/sda4 (ext4) | ROTA=1 | Sched=mq-deadline</text>
+<text x="28.0" y="497" textLength="189.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Cache &amp; Alignment:</text>
+<text x="364.0" y="497" textLength="745.5" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">write_cache=write back | RA=128KB | Sector=512B / 512B | TRIM=Supported</text>
+<text x="28.0" y="526" textLength="210.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Benchmark File Size:</text>
+<text x="364.0" y="526" textLength="714.0" lengthAdjust="spacingAndGlyphs" fill="#fcd34d">50% Adaptive Stress File = 491.5 GB (Matrix 4.0 GB, libaio direct=1)</text>
+<text x="28.0" y="584" textLength="283.5" lengthAdjust="spacingAndGlyphs" fill="#fcd34d">── [Quantifiable Scores] ──</text>
+<text x="28.0" y="613" textLength="220.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Disk Score (Higher↑):</text>
+<rect x="362.0" y="596" width="172.0" height="24" rx="4.5" fill="#dc2626"/>
+<text x="374.5" y="613" textLength="147.0" lengthAdjust="spacingAndGlyphs" fill="#ffffff" font-weight="700">32.4 / 100 · D</text>
+<text x="542.5" y="613" textLength="147.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">█████░░░░░░░░░</text>
+<text x="364.0" y="642" textLength="588.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">╚═ Seq 35 | 4K 10 | Lat 14 | Conc 25 | Sust 50 | Meta 98</text>
+<text x="28.0" y="671" textLength="252.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Oversell Index (Lower↓):</text>
+<rect x="362.0" y="654" width="403.0" height="24" rx="4.5" fill="#16a34a"/>
+<text x="374.5" y="671" textLength="378.0" lengthAdjust="spacingAndGlyphs" fill="#08170f" font-weight="700">9.5 / 100 · Minimal / Near-Dedicated</text>
+<text x="773.5" y="671" textLength="147.0" lengthAdjust="spacingAndGlyphs" fill="#fcd34d">█░░░░░░░░░░░░░</text>
+<text x="364.0" y="700" textLength="882.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">╚═ Ref: Dedicated HDD (0=Dedicated, 100=Severe) · BW 0 | 4K 0 | TailLat 33 | Drop 12</text>
+<text x="28.0" y="729" textLength="252.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">CPU Score (Geekbench 5):</text>
+<rect x="362.0" y="712" width="193.0" height="24" rx="4.5" fill="#16a34a"/>
+<text x="374.5" y="729" textLength="168.0" lengthAdjust="spacingAndGlyphs" fill="#08170f" font-weight="700">Single-Core: 713</text>
+<rect x="572.0" y="712" width="182.5" height="24" rx="4.5" fill="#16a34a"/>
+<text x="584.5" y="729" textLength="157.5" lengthAdjust="spacingAndGlyphs" fill="#08170f" font-weight="700">Multi-Core: 747</text>
+<text x="28.0" y="787" textLength="294.0" lengthAdjust="spacingAndGlyphs" fill="#e2e8f0">2. Latency Baseline (ioping)</text>
+<text x="28.0" y="816" textLength="199.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Direct Random Seek:</text>
+<text x="364.0" y="816" textLength="420.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">167.7 us / 201.5 us / 290.1 us / 23.5 us</text>
+<text x="28.0" y="845" textLength="168.0" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Page Cache Read:</text>
+<text x="364.0" y="845" textLength="388.5" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">6.87 us / 12.9 us / 16.2 us / 1.72 us</text>
+<text x="28.0" y="874" textLength="199.5" lengthAdjust="spacingAndGlyphs" fill="#67d8ed">Sync Write (fsync):</text>
+<text x="364.0" y="874" textLength="420.0" lengthAdjust="spacingAndGlyphs" fill="#6ee7a1">195.0 us / 260.2 us / 669.0 us / 84.8 us</text>
+</g></svg>

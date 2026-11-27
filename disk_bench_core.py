@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskQuality v1.0.4 — Bilingual Objective VPS Disk, Concurrency, Global Network & IP Quality Suite
+DiskQuality v1.0.9 — Bilingual Objective VPS Disk, Concurrency, Global Network & IP Quality Suite
 - Tailored for PT / Storage / Backup VPS evaluation (pure objective data, zero subjective advice)
 - Adaptive 50% capacity / 20-minute endurance algorithm with >65% disk usage safety guard
 - Live visual progress bar, thorough pre/post environment cleanup, and friendly kaomoji UX
@@ -14,6 +14,7 @@ import re
 import sys
 import json
 import html
+import math
 import time
 import random
 import signal
@@ -27,7 +28,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
-VERSION = "v1.0.8 (2026.11.26)"
+VERSION = "v1.0.9 (2026.11.27)"
 DEFAULT_SITE_URL = os.environ.get("DQ_SITE_URL", "https://test.sakurado.top")
 
 TOOL_CREDITS = [
@@ -134,6 +135,7 @@ I18N = {
         "ns_cmd": "一键复测命令", "ns_url": "在线报告",
         "done_msg": "测试完成，点击查看你的在线测评报告：",
         "res_link": "测试结果",
+        "card_tab": "可视化战报",
         "tabs": ["全部", "基本信息", "硬盘矩阵", "持久时序", "互联与IP", "元数据与寿命"],
     },
     "en": {
@@ -196,6 +198,7 @@ I18N = {
         "ns_cmd": "One-Click Command", "ns_url": "Online Report",
         "done_msg": "Benchmark complete! View your online report:",
         "res_link": "Test Result",
+        "card_tab": "Visual Card",
         "tabs": ["All", "Overview", "Disk Matrix", "Endurance", "Net & IP", "Meta & Life"],
     },
 }
@@ -962,227 +965,323 @@ def parse_iostat_minutes(log_path, dev_short, seq_minutes):
     return minutes
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-_])")
+_SGR = re.compile(r"(\x1b\[[0-9;]*m)")
+_XML_INVALID = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\ud800-\udfff\ufffe\uffff]")
+REPORT_PAGES = ("full", "overview", "disk", "endurance", "netip", "meta")
+_RADAR_KEYS = ("s_seq", "s_4k", "s_lat", "s_conc", "s_sust", "s_meta")
+
+
+def strip_ansi(s):
+    return _ANSI_ESCAPE.sub("", s)
+
+
+def _vis_width(s):
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in strip_ansi(s))
+
+
+def _pad_vis(s, width, align="left"):
+    padding = " " * max(0, width - _vis_width(s))
+    return padding + s if align == "right" else s + padding
+
+
+def _num(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        result = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _fmt(value, digits=1, suffix=""):
+    value = _num(value)
+    return f"{value:.{digits}f}{suffix}" if value is not None else "—"
+
+
+def _sparkline(values):
+    values = [v for v in map(_num, values) if v is not None]
+    if not values:
+        return ""
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return "▄" * len(values)
+    # Scale before subtracting so opposite finite extremes cannot overflow.
+    scale = max(abs(lo), abs(hi))
+    lo, hi = lo / scale, hi / scale
+    return "".join("▁▂▃▄▅▆▇█"[round((v / scale - lo) * 7 / (hi - lo))] for v in values)
+
+
+def _mini_bar(score, max_val=100.0, width=14):
+    score, max_val = _num(score), _num(max_val)
+    ratio = min(max(0, score), max_val) / max_val if score is not None and max_val and max_val > 0 else 0
+    filled = round(ratio * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _rows(value):
+    return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+
+
+def _enabled(data, key):
+    # Legacy reports omit the selection map. An explicit false or null flag skips that module.
+    return bool(_mapping(data.get("selected")).get(key, True))
+
+
+def _module(data, key, selection=None):
+    return data.get(key) if _enabled(data, selection or key) else None
+
+
+def _report_lang(data, lang):
+    value = str(lang or data.get("lang") or "zh").lower()
+    return value if value in I18N else "zh"
+
+
+def _shown(value):
+    return "—" if value is None or value == "" else str(value)
+
+
+def _sequential(point, plan):
+    if isinstance(point.get("is_seq"), bool):
+        return point["is_seq"]
+    stage = str(point.get("stage") or "").lower()
+    if "随机" in stage or "mix" in stage or "rand" in stage:
+        return False
+    if "顺序" in stage or "seq" in stage:
+        return True
+    minute, seconds = _num(point.get("min")), _num(plan.get("sustained_seq_sec"))
+    return minute is None or seconds is None or minute <= max(1, seconds // 60)
+
+
 def _color_bw(mb):
     return C_GRN if mb >= 200 else (C_YEL if mb >= 20 else C_RED)
 
 
+def _fio_rows(value):
+    return [r for r in _rows(value) if r.get("name") and not r.get("error")]
+
+
 def build_sections(data, lang=None, site_url=None):
-    """Build modular ANSI sections so both paginated web cards and full panorama share one source of truth."""
-    lang = (lang or data.get("lang") or "zh").lower()
-    if lang not in I18N: lang = "zh"
+    """Build shared ANSI sections for the CLI and terminal SVG exports."""
+    lang = _report_lang(data, lang)
     L = I18N[lang]
     s_url = site_url or data.get("site_url") or DEFAULT_SITE_URL
     skip = f"{C_BRED}{L['skip_txt']}{C_RST}"
-    t, p = data["topology"], data["plan"]
-    sel = data.get("selected", {})
+    t, p = _mapping(data.get("topology")), _mapping(data.get("plan"))
+    continuation = " " * 32
 
-    # Page 0: Overview & Topology + Quantifiable Scores + ioping (clean categorized layout)
+    def label(key, **kwargs):
+        return _pad_vis(L[key].format(**kwargs).rstrip(), 32)
+
+    def kv(key, value, color=C_GRN, **kwargs):
+        return f"{C_CYN}{label(key, **kwargs)}{color}{value}{C_RST}"
+
+    def fields(template, values, **keys):
+        return L[template].format(**{name: _shown(values.get(key)) for name, key in keys.items()})
+
+    def disk_table(rows):
+        lines = [f"{C_CYN}{_pad_vis(L['th_item'], 22)} {_pad_vis(L['th_r'], 24)} {_pad_vis(L['th_w'], 24)} {'p95':>9} {'p99':>9}{C_RST}"]
+        for row in rows:
+            r, w = (_num(row.get(k)) for k in ("r_iops", "w_iops"))
+            bw_r, bw_w = (_num(row.get(k)) for k in ("r_bw_mbs", "w_bw_mbs"))
+            rs = f"{_fmt(bw_r, 2, 'MB/s')} ({r:.0f})" if r else "—"
+            ws = f"{_fmt(bw_w, 2, 'MB/s')} ({w:.0f})" if w else "—"
+            tails = []
+            for percentile in ("p95", "p99"):
+                vals = [_num(row.get(f"{direction}_{percentile}_ms")) for direction in ("r", "w")]
+                tails.append(_pad_vis(_fmt(max((v for v in vals if v is not None), default=None), 2, "ms"), 9, "right"))
+            col = _color_bw(max(bw_r or 0, bw_w or 0))
+            lines.append(f"{C_CYN}{_pad_vis(str(row['name']), 22)}{C_RST} {col}{_pad_vis(rs, 24)} {_pad_vis(ws, 24)}{C_RST} {' '.join(tails)}")
+        return lines
+
     sec_overview = [
-        "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
-        f"               {C_B}{L['title']}: {C_CYN}{t['masked_ip']}{C_RST}",
+        "+" * 80,
+        f"               {C_B}{L['title']}: {C_CYN}{_shown(t.get('masked_ip'))}{C_RST}",
         f"               {C_U}https://github.com/arimrs/DiskQuality{C_RST}",
         f"                bash <(curl -sL {s_url})",
-        f"     {L['time_ver'].format(t=data['report_time'], v=data['version'])}",
-        "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
-        L["s1"],
-        f"{C_YEL}{L['grp_hw']}{C_RST}",
-        f"{C_CYN}{L['k_virt']}{C_GRN}{t['virt']} · {t.get('profile','vps').upper()} ({t['arch']}){C_RST}",
-        f"{C_CYN}{L['k_os']}{C_GRN}{t['os']}{C_RST}",
-        f"{C_CYN}{L['k_cpu']}{C_INV} {t['cpu_model']} {C_RST}",
-        f"                        {C_INV} ╚═ {L['cpu_sub'].format(cores=t['cpu_cores'], mhz=t['cpu_mhz'], load=t['loadavg'])} {C_RST}",
-        f"{C_CYN}{L['k_mem']}{C_INV} {L['mem_val'].format(mem=t['mem'], swap=t['swap'])} {C_RST}",
-        f"{C_CYN}{L['k_disk']}{C_INV} {L['disk_val'].format(model=t['disk_model'], tot=p['disk_total_gb'], used=p['disk_used_gb'], avail=p['disk_avail_gb'])} {C_RST}",
-        f"{C_CYN}{L['k_dev']}{C_GRN}{L['dev_val'].format(dev=t['mount_dev'], fs=t['fs_type'], rota=t['rotational'], sched=t['scheduler'])}{C_RST}",
-        f"{C_CYN}{L['k_cache']}{C_GRN}{L['cache_val'].format(wc=t['write_cache'], ra=t['read_ahead_kb'], sec=t['sector'], trim=L['trim_yes'] if t['trim_supported'] else L['trim_no'])}{C_RST}",
-        f"{C_CYN}{L['k_spec']}{C_YEL}{L['spec_val'].format(sgb=p['stress_file_gb'], mgb=p['matrix_file_gb'], ioe=p.get('ioengine','libaio'), dir=p.get('direct',1))}{C_RST}",
-        "",
-        f"{C_YEL}{L['grp_eval']}{C_RST}",
+        f"     {L['time_ver'].format(t=_shown(data.get('report_time')), v=_shown(data.get('version')))}",
+        "+" * 80, L["s1"], f"{C_YEL}{L['grp_hw']}{C_RST}",
+        kv("k_virt", f"{_shown(t.get('virt'))} · {str(t.get('profile') or 'vps').upper()} ({_shown(t.get('arch'))})"),
+        kv("k_os", _shown(t.get("os"))),
+        kv("k_cpu", f" {_shown(t.get('cpu_model'))} ", C_INV),
+        f"{continuation}{C_INV} ╚═ {fields('cpu_sub', t, cores='cpu_cores', mhz='cpu_mhz', load='loadavg')} {C_RST}",
+        kv("k_mem", f" {fields('mem_val', t, mem='mem', swap='swap')} ", C_INV),
+        kv("k_disk", f" {fields('disk_val', {**p, **t}, model='disk_model', tot='disk_total_gb', used='disk_used_gb', avail='disk_avail_gb')} ", C_INV),
+        kv("k_dev", fields("dev_val", t, dev="mount_dev", fs="fs_type", rota="rotational", sched="scheduler")),
+        kv("k_cache", fields("cache_val", {**t, "trim": L["trim_yes"] if t.get("trim_supported") else L["trim_no"] if "trim_supported" in t else "—"}, wc="write_cache", ra="read_ahead_kb", sec="sector", trim="trim")),
+        kv("k_spec", fields("spec_val", {"ioengine": "libaio", "direct": 1, **p}, sgb="stress_file_gb", mgb="matrix_file_gb", ioe="ioengine", dir="direct"), C_YEL),
+        "", f"{C_YEL}{L['grp_eval']}{C_RST}",
     ]
-    d_sc = data.get("disk_score")
-    if d_sc:
-        ds_col = C_BG_GRN if d_sc["score"] >= 70 else (C_BG_YEL if d_sc["score"] >= 45 else C_BG_RED)
-        sec_overview.append(
-            f"{C_CYN}{L['k_dscore']}{ds_col} {d_sc['score']:.1f} / 100 · {d_sc['grade']} {C_RST}"
-        )
-        sec_overview.append(
-            f"                        {C_GRN}╚═ {L['ds_sub'].format(s_seq=d_sc['s_seq'], s_4k=d_sc['s_4k'], s_lat=d_sc['s_lat'], s_conc=d_sc['s_conc'], s_sust=d_sc['s_sust'], s_meta=d_sc['s_meta'])}{C_RST}"
-        )
-    os_idx = data.get("overselling")
-    if os_idx:
-        t_col = {"t0": C_BG_GRN, "t1": C_BG_GRN, "t2": C_BG_YEL, "t3": C_BG_RED}.get(os_idx["tier"], C_BG_YEL)
-        t_lbl = L.get(f"os_{os_idx['tier']}", os_idx["tier"])
-        sec_overview.append(
-            f"{C_CYN}{L['k_oscore']}{t_col} {os_idx['score']:.1f} / 100 · {t_lbl} {C_RST}"
-        )
-        sec_overview.append(
-            f"                        {C_GRN}╚═ {L['os_sub'].format(media=os_idx['media'], d_bw=os_idx['d_bw'], d_4k=os_idx['d_4k'], d_lat=os_idx['d_lat'], d_drop=os_idx['d_drop'])}{C_RST}"
-        )
-    gb = data.get("geekbench")
-    if not gb:
-        sec_overview.append(f"{C_CYN}{L['k_gb_skip']}{skip}")
-    else:
-        sc_v, mc_v = gb.get("single_core", "N/A"), gb.get("multi_core", "N/A")
-        gb_ver = gb.get("version", "Geekbench")
-        sec_overview.append(
-            f"{C_CYN}{L['k_gb'].format(ver=gb_ver)}"
-            f"{C_BG_GRN} {L['gb_sc']}: {sc_v} {C_RST}  {C_BG_GRN} {L['gb_mc']}: {mc_v} {C_RST}"
-        )
-        if gb.get("url"):
-            sec_overview.append(f"{C_CYN}{L['k_gb_url']}{C_GRN}{C_U}{gb['url']}{C_RST}")
-    sec_overview += ["", L["s2"]]
-    io = data.get("ioping")
-    if not sel.get("ioping", True) or not io:
-        sec_overview.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
+    d_sc = _mapping(_module(data, "disk_score"))
+    ds = _num(d_sc.get("score"))
+    if ds is not None:
+        ds_col = C_BG_GRN if ds >= 70 else C_BG_YEL if ds >= 45 else C_BG_RED
         sec_overview += [
-            f"{C_CYN}{L['k_seek']}{C_GRN}{io.get('direct_seek','N/A')}{C_RST}",
-            f"{C_CYN}{L['k_cread']}{C_GRN}{io.get('cached_read','N/A')}{C_RST}",
-            f"{C_CYN}{L['k_swrite']}{C_GRN}{io.get('sync_write','N/A')}{C_RST}",
+            kv("k_dscore", f" {ds:.1f} / 100 · {_shown(d_sc.get('grade'))} {C_RST} {C_GRN}{_mini_bar(ds)}", ds_col),
+            f"{continuation}{C_GRN}╚═ {fields('ds_sub', d_sc, **{k: k for k in _RADAR_KEYS})}{C_RST}",
         ]
+    os_idx = _mapping(_module(data, "overselling"))
+    score = _num(os_idx.get("score"))
+    if score is not None:
+        tier = _shown(os_idx.get("tier"))
+        col = {"t0": C_BG_GRN, "t1": C_BG_GRN, "t2": C_BG_YEL, "t3": C_BG_RED}.get(tier, C_BG_YEL)
+        sub = fields("os_sub", os_idx, media="media", d_bw="d_bw", d_4k="d_4k", d_lat="d_lat", d_drop="d_drop")
+        sec_overview += [
+            kv("k_oscore", f" {score:.1f} / 100 · {L.get(f'os_{tier}', tier)} {C_RST} {C_YEL}{_mini_bar(score)}", col),
+            f"{continuation}{C_GRN}╚═ {sub}{C_RST}",
+        ]
+    gb = _mapping(_module(data, "geekbench"))
+    if gb:
+        scores = "  ".join(f"{C_BG_GRN} {L[lbl]}: {_shown(gb.get(key))} {C_RST}" for lbl, key in (("gb_sc", "single_core"), ("gb_mc", "multi_core")))
+        sec_overview.append(kv("k_gb", scores, ver=gb.get("version") or "Geekbench"))
+        if gb.get("url"):
+            sec_overview.append(kv("k_gb_url", f"{C_U}{gb['url']}"))
+    else:
+        sec_overview.append(kv("k_gb_skip", skip))
+    sec_overview += ["", L["s2"]]
+    io = _mapping(_module(data, "ioping"))
+    if io:
+        sec_overview.extend(kv(lbl, _shown(io.get(key))) for lbl, key in (
+            ("k_seek", "direct_seek"), ("k_cread", "cached_read"), ("k_swrite", "sync_write")))
+    else:
+        sec_overview.append(kv("k_res", skip))
 
-    # Page 1: Disk Matrix (grouped into Sequential vs Random) + Production fsync + High-Concurrency
     sec_disk = [L["s3"]]
-    if not sel.get("matrix", True) or not data.get("matrix"):
-        sec_disk.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        seq_rows = [r for r in data["matrix"] if not r.get("error") and r["name"].startswith(("SEQ", "BUF"))]
-        rnd_rows = [r for r in data["matrix"] if not r.get("error") and r["name"].startswith("RND")]
-        hdr = f"{C_CYN}{L['th_item']:<20} {L['th_r']:<22} {L['th_w']:<22} {'p95':>8} {'p99':>8}{C_RST}"
-        for grp_lbl, rows in ((L["grp_seq"], seq_rows), (L["grp_rnd"], rnd_rows)):
-            if not rows: continue
-            sec_disk.append(f"{C_YEL}{grp_lbl}{C_RST}")
-            sec_disk.append(hdr)
-            for row in rows:
-                rs = f"{row['r_bw_mbs']:.2f}MB/s ({row['r_iops']:.0f})" if row["r_iops"] > 0 else "-"
-                ws = f"{row['w_bw_mbs']:.2f}MB/s ({row['w_iops']:.0f})" if row["w_iops"] > 0 else "-"
-                col = _color_bw(max(row["r_bw_mbs"], row["w_bw_mbs"]))
-                sec_disk.append(f"{C_CYN}{row['name']:<20}{C_RST} {col}{rs:<22} {ws:<22}{C_RST} {max(row['r_p95_ms'],row['w_p95_ms']):>6.1f}ms {max(row['r_p99_ms'],row['w_p99_ms']):>6.1f}ms")
+    matrix = _fio_rows(_module(data, "matrix"))
+    seq_rows = [r for r in matrix if str(r["name"]).startswith(("SEQ", "BUF"))]
+    rnd_rows = [r for r in matrix if str(r["name"]).startswith("RND")]
+    for grp, rows in (("grp_seq", seq_rows), ("grp_rnd", rnd_rows)):
+        if rows:
+            sec_disk += [f"{C_YEL}{L[grp]}{C_RST}"] + disk_table(rows)
+    if not seq_rows and not rnd_rows:
+        sec_disk.append(kv("k_res", skip))
+    for heading, rows in (("s4", _fio_rows(_module(data, "production", "prod"))),
+                          ("s5", _fio_rows(_module(data, "concurrency")))):
+        sec_disk += ["", L[heading]] + (disk_table(rows) if rows else [kv("k_res", skip)])
 
-    sec_disk += ["", L["s4"]]
-    if not sel.get("prod", True) or not data.get("production"):
-        sec_disk.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        for row in data["production"]:
-            if row.get("error"): continue
-            rs = f"{L['lbl_r']} {row['r_bw_mbs']:.2f}MB/s({row['r_iops']:.0f})" if row["r_iops"] > 0 else f"{L['lbl_r']} -"
-            ws = f"{L['lbl_w']} {row['w_bw_mbs']:.2f}MB/s({row['w_iops']:.0f})" if row["w_iops"] > 0 else f"{L['lbl_w']} -"
-            sec_disk.append(f"{C_CYN}{row['name']:<18}{C_RST} {C_YEL}{rs:<22} {ws:<22}{C_RST} p99={max(row['r_p99_ms'],row['w_p99_ms']):.2f}ms")
+    sec_endurance = [L["s6"].format(gb=_shown(p.get("stress_file_gb")))]
+    sus = _mapping(_module(data, "sustained"))
+    sw, ms = _mapping(sus.get("seq_write")), _mapping(sus.get("rand_mixed"))
+    if sw and not sw.get("error"):
+        written = _num(sw.get("w_bytes"))
+        sec_endurance.append(kv("k_seq", L["seq_val"].format(
+            gb=_fmt(written / 1024**3 if written is not None else None, 2),
+            bw=_shown(sw.get("w_bw_mbs")), p99=_shown(sw.get("w_p99_ms")))))
+    if ms and not ms.get("error"):
+        sec_endurance.append(kv("k_mix", fields("mix_val", ms, rbw="r_bw_mbs", riops="r_iops",
+                                               wbw="w_bw_mbs", wiops="w_iops", p99="w_p99_ms"), C_YEL))
+    timeline = _rows(sus.get("timeline"))
+    if timeline:
+        write_rates = (_num(pt.get("w_mb")) for pt in timeline)
+        values = [v for v in write_rates if v is not None]
+        if values:
+            scale = max(map(abs, values)) or 1
+            avg = scale * (math.fsum(v / scale for v in values) / len(values))
+            desc = "写入 最低 / 平均 / 峰值" if lang == "zh" else "Write min / avg / peak"
+            sec_endurance.append(f"{C_CYN}{desc}  {C_GRN}{_sparkline(values)}{C_RST}  {min(values):.2f} / {avg:.2f} / {max(values):.2f} MB/s")
+        columns = (("min", L["th_min"], 6, 0, ""), ("stage", L["th_stg"], 18, 0, ""),
+                   ("r_mb", L["th_rmb"], 9, 2, ""), ("w_mb", L["th_wmb"], 9, 2, ""),
+                   ("r_s", "r/s", 8, 1, ""), ("w_s", "w/s", 8, 1, ""),
+                   ("w_await", "w_await", 10, 2, "ms"), ("util", "%util", 8, 1, "%"))
+        sec_endurance.append(C_CYN + " ".join(_pad_vis(h, w, "left" if k in ("min", "stage") else "right")
+                                             for k, h, w, _, _ in columns) + C_RST)
+        for pt in timeline:
+            stage = L["stg_seq"] if _sequential(pt, p) else L["stg_mix"]
+            minute = _num(pt.get("min"))
+            minute = L["min_fmt"].format(m=int(minute)).rstrip() if minute is not None else "—"
+            cells = [_pad_vis(minute, 6), _pad_vis(stage, 18)]
+            cells.extend(_pad_vis(_fmt(pt.get(k), digits, unit), width, "right")
+                         for k, _, width, digits, unit in columns[2:])
+            col = C_GRN if (_num(pt.get("w_mb")) or 0) >= 50 else C_YEL
+            sec_endurance.append(f"{' '.join(cells[:2])} {col}{' '.join(cells[2:4])}{C_RST} {' '.join(cells[4:])}")
+    if len(sec_endurance) == 1:
+        sec_endurance.append(kv("k_res", skip))
 
-    sec_disk += ["", L["s5"]]
-    if not sel.get("concurrency", True) or not data.get("concurrency"):
-        sec_disk.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        sec_disk.append(f"{C_CYN}{L['th_item']:<20} {L['th_r']:<22} {L['th_w']:<22} {'p95':>8} {'p99':>8}{C_RST}")
-        for row in data["concurrency"]:
-            if row.get("error"): continue
-            rs = f"{row['r_bw_mbs']:.2f}MB/s ({row['r_iops']:.0f})" if row["r_iops"] > 0 else "-"
-            ws = f"{row['w_bw_mbs']:.2f}MB/s ({row['w_iops']:.0f})" if row["w_iops"] > 0 else "-"
-            col = _color_bw(max(row["r_bw_mbs"], row["w_bw_mbs"]))
-            sec_disk.append(f"{C_CYN}{row['name']:<20}{C_RST} {col}{rs:<22} {ws:<22}{C_RST} {max(row['r_p95_ms'],row['w_p95_ms']):>6.1f}ms {max(row['r_p99_ms'],row['w_p99_ms']):>6.1f}ms")
-
-    # Page 2: 50% Endurance & iostat Timeline
-    sec_endurance = [L["s6"].format(gb=p["stress_file_gb"])]
-    sus = data.get("sustained")
-    if not sel.get("sustained", True) or not sus:
-        sec_endurance.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        sw, ms = sus["seq_write"], sus["rand_mixed"]
-        sec_endurance += [
-            f"{C_CYN}{L['k_seq']}{C_GRN}{L['seq_val'].format(gb=round(sw.get('w_bytes',0)/(1024**3),2), bw=sw.get('w_bw_mbs',0), p99=sw.get('w_p99_ms',0))}{C_RST}",
-            f"{C_CYN}{L['k_mix']}{C_YEL}{L['mix_val'].format(rbw=ms.get('r_bw_mbs',0), riops=ms.get('r_iops',0), wbw=ms.get('w_bw_mbs',0), wiops=ms.get('w_iops',0), p99=ms.get('w_p99_ms',0))}{C_RST}",
-        ]
-        if sus.get("timeline"):
-            sec_endurance.append(f"{C_CYN}{L['th_min']:<6} {L['th_stg']:<14} {L['th_rmb']:>8} {L['th_wmb']:>9} {'r/s':>7} {'w/s':>7} {'w_await':>9} {'%util':>7}{C_RST}")
-            for pt in sus["timeline"]:
-                stg = L["stg_seq"] if pt.get("is_seq", True) else L["stg_mix"]
-                col = C_GRN if pt["w_mb"] >= 50 else C_YEL
-                sec_endurance.append(f"{L['min_fmt'].format(m=pt['min'])}  {stg:<13} {col}{pt['r_mb']:>8.2f} {pt['w_mb']:>9.2f}{C_RST} {pt['r_s']:>7.1f} {pt['w_s']:>7.1f} {pt['w_await']:>7.1f}ms {pt['util']:>6.1f}%")
-
-    # Page 3: Global Network (grouped by region) & Multi-Source IP Quality + Risk Breakdown
     sec_netip = [L["s7"]]
-    net = data.get("network")
-    if not sel.get("network", True) or not net:
-        sec_netip.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        sec_netip.append(f"{C_CYN}{L['th_node']:<24} {L['th_rtt']:<28} {L['th_loss']:>8}{C_RST}")
-        reg_tags = {"(JP)": L["reg_ap"], "(SG)": L["reg_ap"], "(HK)": L["reg_ap"], "(US)": L["reg_us"], "(DE)": L["reg_eu"], "(UK)": L["reg_eu"], "(NL)": L["reg_eu"]}
-        for h in net.get("hubs", []):
-            rtag = next((v for k, v in reg_tags.items() if k in h["hub"]), "")
-            h_lbl = f"[{rtag}] {h['hub']}" if rtag else h["hub"]
-            rtt_s = f"{h['min']:.1f} / {h['avg']:.1f} / {h['max']:.1f} ms" if h["avg"] >= 0 else "Timeout"
-            col = C_GRN if 0 <= h["avg"] < 120 else (C_YEL if h["avg"] >= 0 else C_RED)
-            sec_netip.append(f"{C_CYN}{h_lbl:<24}{C_RST} {col}{rtt_s:<28}{C_RST} {h['loss']:>6.0f}%")
-        dl_parts = [f"{d['name']}: {d['mbs']} MB/s ({d['mbps']} Mbps)" for d in net.get("downloads", [])]
-        sec_netip.append(f"{C_CYN}{L['k_dl']}{C_GRN}{' | '.join(dl_parts)}{C_RST}")
+    net = _mapping(_module(data, "network"))
+    hubs = _rows(net.get("hubs"))
+    if hubs:
+        sec_netip.append(f"{C_CYN}{_pad_vis(L['th_node'], 28)} {_pad_vis(L['th_rtt'], 29)} {_pad_vis(L['th_loss'], 8, 'right')}{C_RST}")
+        for h in hubs:
+            name = _shown(h.get("hub"))
+            reg = _hub_region(name)
+            h_lbl = f"[{L[reg]}] {name}" if reg else name
+            avg = _num(h.get("avg"))
+            rtt = " / ".join(_fmt(h.get(k)) for k in ("min", "avg", "max")) + " ms" if avg is not None and avg >= 0 else ("超时" if lang == "zh" else "Timeout") if avg is not None else "—"
+            col = C_GRN if avg is not None and 0 <= avg < 120 else C_YEL if avg is not None and avg >= 0 else C_RED
+            sec_netip.append(f"{C_CYN}{_pad_vis(h_lbl, 28)}{C_RST} {col}{_pad_vis(rtt, 29)}{C_RST} {_pad_vis(_fmt(h.get('loss'), 0, '%'), 8, 'right')}")
+    dl = _rows(net.get("downloads"))
+    if dl:
+        sec_netip.append(kv("k_dl", " | ".join(f"{_shown(d.get('name'))}: {_shown(d.get('mbs'))} MB/s ({_shown(d.get('mbps'))} Mbps)" for d in dl)))
+    if not hubs and not dl:
+        sec_netip.append(kv("k_res", skip))
 
     sec_netip += ["", L["s8"]]
-    ipq = data.get("ip_quality")
-    if not sel.get("ip_quality", True) or not ipq:
-        sec_netip.append(f"{C_CYN}{L['k_res']}{skip}")
-    else:
-        im = ipq["meta"]
-        rk_map = {"low": (C_BG_GRN, L["risk_low"]), "mid": (C_BG_YEL, L["risk_mid"]), "high": (C_BG_RED, L["risk_high"])}
-        rk_col, rk_lbl = rk_map.get(ipq["risk"], (C_BG_YEL, ipq["risk"]))
-        cr_col, cr_lbl = rk_map.get(ipq.get("composite_tier", "mid"), (C_BG_YEL, ""))
-        p25_badge = f"{C_BG_GRN} ✔ {L['p25_ok']} {C_RST}" if ipq["port25_open"] else f"{C_BG_RED} ✘ {L['p25_no']} {C_RST}"
-        bl_hits = ipq.get("dnsbl_hits", [])
-        bl_tot = ipq.get("dnsbl_total", 3)
-        bl_badge = f"{C_BG_GRN} ✔ 0/{bl_tot} Clean {C_RST}" if not bl_hits else f"{C_BG_RED} ✘ {len(bl_hits)}/{bl_tot} ({','.join(bl_hits)}) {C_RST}"
-
+    ipq = _mapping(_module(data, "ip_quality"))
+    if ipq:
+        im = _mapping(ipq.get("meta"))
+        risk_colors = {"low": C_BG_GRN, "mid": C_BG_YEL, "high": C_BG_RED}
+        tier, risk = _shown(ipq.get("composite_tier")), _shown(ipq.get("risk"))
+        port25, bl_hits = ipq.get("port25_open"), ipq.get("dnsbl_hits")
+        bl_tot = _shown(ipq.get("dnsbl_total", 3))
+        p25 = (f"{C_BG_GRN} ✔ {L['p25_ok']} " if port25 is True else
+               f"{C_BG_RED} ✘ {L['p25_no']} " if port25 is False else "—") + C_RST
+        dnsbl = "—"
+        if isinstance(bl_hits, list):
+            dnsbl = (f"{C_BG_RED} ✘ {len(bl_hits)}/{bl_tot} ({','.join(map(str, bl_hits))}) " if bl_hits else
+                     f"{C_BG_GRN} ✔ 0/{bl_tot} {'无命中' if lang == 'zh' else 'Clean'} ") + C_RST
         sec_netip += [
             f"{C_YEL}{L['grp_ip_base']}{C_RST}",
-            f"{C_CYN}{L['k_asn']}{C_GRN}{im['asn']} ({im['org']}) · {im['location']}{C_RST}",
-            f"{C_CYN}{L['k_ipattr']}{C_YEL}{im.get('native_type', 'Unknown')} · ip-api: {im['hosting']}{C_RST}",
-            f"{C_CYN}{L['k_ping0']}{C_GRN}{im.get('ping0_geo', 'N/A')}{C_RST}",
-            f"{C_CYN}{L['k_p25']}{p25_badge}   {C_CYN}{L['k_dnsbl']}{bl_badge}",
-            "",
-            f"{C_YEL}{L['grp_ip_risk']}{C_RST}",
-            f"{C_CYN}{L['k_risk']}{cr_col} {ipq.get('composite_risk', 0):.1f} / 100 · {cr_lbl} {C_RST}",
+            kv("k_asn", f"{_shown(im.get('asn'))} ({_shown(im.get('org'))}) · {_shown(im.get('location'))}"),
+            kv("k_ipattr", f"{_shown(im.get('native_type'))} · ip-api: {_shown(im.get('hosting'))}", C_YEL),
+            kv("k_ping0", _shown(im.get("ping0_geo"))),
+            kv("k_p25", p25), kv("k_dnsbl", dnsbl),
+            "", f"{C_YEL}{L['grp_ip_risk']}{C_RST}",
         ]
-        srcs = ipq.get("risk_sources", [])
-        if srcs:
-            src_strs = [f"{x['api']}: {x['raw']}" for x in srcs]
-            sec_netip.append(f"{C_CYN}{L['k_risk_src']}{C_GRN}{' | '.join(src_strs[:3])}{C_RST}")
-            if len(src_strs) > 3:
-                sec_netip.append(f"                        {C_GRN}{' | '.join(src_strs[3:])}{C_RST}")
-        sec_netip += [
-            "",
-            f"{C_YEL}{L['grp_ip_plat']}{C_RST}",
-            f"{C_CYN}{L['k_deny']}{rk_col} {ipq['denial_pct']}% ({ipq['denied_count']}/{ipq['total_probes']}) {rk_lbl} {C_RST}",
-        ]
-        row_items = []
-        for pr in ipq.get("probes", []):
-            if pr["ok"]:
-                row_items.append(f"{C_BG_GRN} ✔ {pr['service']} {C_RST}")
-            else:
-                row_items.append(f"{C_BG_RED} ✘ {pr['service']}({pr['code']}) {C_RST}")
-        sec_netip.append("  " + "  ".join(row_items[:5]))
-        sec_netip.append("  " + "  ".join(row_items[5:]))
-
-    # Page 4: Metadata & Lifetime
-    sec_meta = [L["s9"]]
-    m, l = data.get("metadata"), data.get("lifetime")
-    if not sel.get("meta", True) or not m or not l:
-        sec_meta.append(f"{C_CYN}{L['k_res']}{skip}")
+        comp = _num(ipq.get("composite_risk"))
+        if comp is not None:
+            sec_netip.append(kv("k_risk", f" {comp:.1f} / 100 · {L.get(f'risk_{tier}', tier)} {C_RST} {C_YEL}{_mini_bar(comp)}", risk_colors.get(tier, C_BG_YEL)))
+        srcs = [f"{_shown(x.get('api'))}: {_shown(x.get('raw'))}" for x in _rows(ipq.get("risk_sources"))]
+        for i in range(0, len(srcs), 3):
+            part = " | ".join(srcs[i:i + 3])
+            sec_netip.append(kv("k_risk_src", part) if i == 0 else f"{continuation}{C_GRN}{part}{C_RST}")
+        sec_netip += ["", f"{C_YEL}{L['grp_ip_plat']}{C_RST}",
+                      kv("k_deny", f" {_fmt(ipq.get('denial_pct'), 1, '%')} ({_shown(ipq.get('denied_count'))}/{_shown(ipq.get('total_probes'))}) {L.get(f'risk_{risk}', risk)} ", risk_colors.get(risk, C_BG_YEL))]
+        probes = []
+        for pr in _rows(ipq.get("probes")):
+            name, ok = _shown(pr.get("service")), pr.get("ok")
+            probes.append(f"{C_BG_GRN} ✔ {name} {C_RST}" if ok is True else
+                          f"{C_BG_RED} ✘ {name}({_shown(pr.get('code'))}) {C_RST}" if ok is False else
+                          f" — {name} ")
+        sec_netip.extend("  " + "  ".join(probes[i:i + 5]) for i in range(0, len(probes), 5))
     else:
-        poh_s = L["smart_poh"].format(h=l["smart_power_on_hours"]) if l.get("smart_power_on_hours") else ""
-        sec_meta += [
-            f"{C_CYN}{L['k_meta']}{C_GRN}{L['meta_val'].format(c=m['create_fps'], s=m['stat_fps'], r=m['read_fps'], d=m['delete_fps'])}{C_RST}",
-            f"{C_CYN}{L['k_smart']}{C_YEL}{l['smart_raw_status']}{poh_s}{C_RST}",
-            f"{C_CYN}{L['k_ext4']}{C_GRN}{L['ext4_val'].format(cr=l['fs_created'], mc=l['mount_count'], lw=l['lifetime_writes'])}{C_RST}",
-        ]
+        sec_netip.append(kv("k_res", skip))
 
-    footer = ["================================================================================"]
+    sec_meta = [L["s9"]]
+    m = _mapping(_module(data, "metadata", "meta"))
+    life = _mapping(_module(data, "lifetime", "meta"))
+    if m:
+        sec_meta.append(kv("k_meta", fields("meta_val", m, c="create_fps", s="stat_fps", r="read_fps", d="delete_fps")))
+    if life:
+        poh = life.get("smart_power_on_hours")
+        hours = L["smart_poh"].format(h=poh) if poh is not None else ""
+        sec_meta += [kv("k_smart", f"{_shown(life.get('smart_raw_status'))}{hours}", C_YEL),
+                     kv("k_ext4", fields("ext4_val", life, cr="fs_created", mc="mount_count", lw="lifetime_writes"))]
+    if not m and not life:
+        sec_meta.append(kv("k_res", skip))
+
+    footer = ["=" * 80]
     if data.get("report_url"):
-        footer.append(f"{C_CYN}{L['k_url']}{C_U}{data['report_url']}{C_RST}")
-
+        footer.append(kv("k_url", f"{C_U}{data['report_url']}"))
+    parts = (sec_overview, sec_disk, sec_endurance, sec_netip, sec_meta)
     return {
-        "overview": "\n".join(sec_overview),
-        "disk": "\n".join(sec_disk),
-        "endurance": "\n".join(sec_endurance),
-        "netip": "\n".join(sec_netip),
-        "meta": "\n".join(sec_meta),
-        "full": "\n".join(sec_overview + [""] + sec_disk + [""] + sec_endurance + [""] + sec_netip + [""] + sec_meta + footer),
+        "full": "\n\n".join("\n".join(part) for part in parts) + "\n" + "\n".join(footer),
+        **{key: "\n".join(part) for key, part in zip(REPORT_PAGES[1:], parts)},
     }
 
 
@@ -1190,111 +1289,601 @@ def render_p2_ansi(data, lang=None, site_url=None):
     return build_sections(data, lang=lang, site_url=site_url)["full"]
 
 
-def strip_ansi(s):
-    return re.sub(r'\x1b\[[0-9;]*m', '', s)
-
-
 ANSI_COLOR_MAP = {
-    "30": "#18181b", "31": "#e05252", "32": "#52b758", "33": "#d4a017",
-    "34": "#60a5fa", "35": "#c084fc", "36": "#3ba7a0", "37": "#f4f4f5",
+    "30": "#0f172a", "31": "#fb7185", "32": "#6ee7a1", "33": "#fcd34d",
+    "34": "#60a5fa", "35": "#c084fc", "36": "#67d8ed", "37": "#f8fafc",
 }
 ANSI_BG_MAP = {
-    "41": "#c92a2a", "42": "#52a31c", "43": "#b45309", "46": "#0e7490", "47": "#d8d8d8",
+    "41": "#dc2626", "42": "#16a34a", "43": "#d97706", "46": "#0891b2", "47": "#e2e8f0",
 }
 
 
-def _span_px_width(s, ascii_w=10.5, cjk_w=17.6):
-    """Calculate accurate pixel width for larger 17.5px mixed ASCII + CJK monospace text."""
-    total = 0.0
-    for ch in s:
-        total += cjk_w if unicodedata.east_asian_width(ch) in ("W", "F") else ascii_w
-    return total
+def _xml_text(value):
+    return _XML_INVALID.sub("", strip_ansi(str(value)))
+
+
+def _svg_escape(value):
+    return html.escape(_xml_text(value))
 
 
 def parse_ansi_spans(line):
-    tokens = re.split(r'(\x1b\[[0-9;]*m)', line)
-    fg, bg, bold, ul = "#e4e4e7", None, False, False
+    default = "#e2e8f0"
+    fg, bg, bold, ul = default, None, False, False
     spans = []
-    for tok in tokens:
-        if tok.startswith("\x1b[") and tok.endswith("m"):
-            codes = [c for c in tok[2:-1].split(";") if c]
-            if not codes or "0" in codes: fg, bg, bold, ul = "#e4e4e7", None, False, False
-            for c in codes:
-                if c == "1": bold = True
-                elif c == "4": ul = True
-                elif c in ANSI_COLOR_MAP: fg = ANSI_COLOR_MAP[c]
-                elif c in ANSI_BG_MAP: bg = ANSI_BG_MAP[c]
-        elif tok:
-            spans.append((tok, fg, bg, bold, ul))
+    for i, token in enumerate(_SGR.split(line)):
+        if i % 2:
+            for code in token[2:-1].split(";"):
+                if code in ("", "0"):
+                    fg, bg, bold, ul = default, None, False, False
+                elif code in ANSI_COLOR_MAP:
+                    fg = ANSI_COLOR_MAP[code]
+                elif code in ANSI_BG_MAP:
+                    bg = ANSI_BG_MAP[code]
+                elif code == "1":
+                    bold = True
+                elif code == "4":
+                    ul = True
+                elif code == "22":
+                    bold = False
+                elif code == "24":
+                    ul = False
+                elif code == "39":
+                    fg = default
+                elif code == "49":
+                    bg = None
+        elif token:
+            clean = _xml_text(token)
+            if clean:
+                spans.append((clean, fg, bg, bold, ul))
     return spans
 
 
-def render_ansi_to_svg_str(ansi_text):
-    """Crisp, larger-font (17.5px) HardwareQuality-style SVG renderer with dynamic width & zero clipping."""
-    lines = ansi_text.splitlines()
-    line_height, pad_x, pad_y = 29, 34, 32
-    parsed = [parse_ansi_spans(ln) for ln in lines]
-    max_line_w = 0.0
-    for spans in parsed:
-        w_line = sum(_span_px_width(t) + (6.0 if bg else 0.0) for t, _, bg, _, _ in spans)
-        if w_line > max_line_w:
-            max_line_w = w_line
-    width = max(1140, int(max_line_w + pad_x * 2 + 28))
-    height = pad_y * 2 + len(lines) * line_height + 20
+def render_ansi_to_svg_str(ansi_text, title=None):
+    """Render aligned 17px terminal cells independently of installed font metrics."""
+    lines = str(ansi_text).split("\n")
+    cell, line_height, pad_x, first_y = 10.5, 29, 28, 62
+    parsed = []
+    for line in lines:
+        spans = []
+        column = 0
+        for txt, fg, bg, bold, ul in parse_ansi_spans(line):
+            expanded = []
+            for ch in txt:
+                if ch == "\t":
+                    count = 8 - column % 8
+                    expanded.append(" " * count)
+                    column += count
+                else:
+                    expanded.append(ch)
+                    column += _vis_width(ch)
+            spans.append(("".join(expanded), fg, bg, bold, ul))
+        parsed.append((spans, column))
+
+    width = max(1140, math.ceil(max(n for _, n in parsed) * cell + pad_x * 2 + 12))
+    height = first_y + (len(lines) - 1) * line_height + 27
+    badge = "DiskQuality · Objective Telemetry"
     svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<defs><style>text { font-family: "JetBrains Mono","Fira Code","Cascadia Code","Sarasa Mono SC","LXGW WenKai Mono","PingFang SC","Microsoft YaHei",monospace; font-size: 17.5px; letter-spacing: 0.25px; text-rendering: geometricPrecision; white-space: pre; }</style></defs>',
-        '<rect width="100%" height="100%" rx="10" fill="#1b1c1f"/>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="terminal-title">',
+        f'<title id="terminal-title">{_svg_escape(title or badge)}</title>',
+        '<defs><linearGradient id="terminal-bg" x2="0" y2="1"><stop stop-color="#12151c"/><stop offset="1" stop-color="#171b24"/></linearGradient>',
+        '<linearGradient id="terminal-accent"><stop stop-color="#22c55e"/><stop offset=".5" stop-color="#06b6d4"/><stop offset="1" stop-color="#6366f1"/></linearGradient>',
+        f'<clipPath id="terminal-frame"><rect x=".5" y=".5" width="{width - 1}" height="{height - 1}" rx="12"/></clipPath></defs>',
+        f'<rect x=".5" y=".5" width="{width - 1}" height="{height - 1}" rx="12" fill="url(#terminal-bg)" stroke="#2a3244"/>',
+        '<rect y="1" width="100%" height="3" fill="url(#terminal-accent)" clip-path="url(#terminal-frame)"/>',
+        f'<line x1="1" x2="{width - 1}" y1="39.5" y2="39.5" stroke="#2a3244"/>',
+        '<circle cx="23" cy="22" r="3.5" fill="#a36879"/><circle cx="37" cy="22" r="3.5" fill="#a89267"/><circle cx="51" cy="22" r="3.5" fill="#689083"/>',
+        f'<rect x="{width - 253}" y="11" width="230" height="22" rx="11" fill="#1d2431" stroke="#2a3244"/>',
+        f'<text x="{width - 138}" y="26" text-anchor="middle" fill="#a9b8ce" font-family="system-ui,sans-serif" font-size="11">{_svg_escape(badge)}</text>',
+        '<g font-family="Sarasa Mono SC,Cascadia Mono,Consolas,Microsoft YaHei,PingFang SC,Noto Sans Mono CJK SC,monospace" font-size="17" xml:space="preserve" style="white-space:pre">',
     ]
-    for idx, spans in enumerate(parsed):
-        y = pad_y + (idx + 1) * line_height - 7
-        rects, texts = [], []
-        cur_x = float(pad_x)
+    for idx, (spans, _) in enumerate(parsed):
+        y = first_y + idx * line_height
+        label = "".join(t for t, *_ in spans).strip()
+        if re.fullmatch(r"\+{4,}|={4,}", label):
+            svg.append(f'<line x1="{pad_x}" x2="{width - pad_x}" y1="{y - 5.5}" y2="{y - 5.5}" stroke="#344055"/>')
+            continue
+        cur_x = pad_x
         for txt, fg, bg, bold, ul in spans:
-            px_w = _span_px_width(txt)
+            px_w = _vis_width(txt) * cell
             if bg:
-                rx_w = max(px_w + 6.0, 18.0)
-                rects.append(f'<rect x="{cur_x:.1f}" y="{y - 18.5:.1f}" width="{rx_w:.1f}" height="24" rx="3" fill="{bg}"/>')
-            fw = ' font-weight="700"' if bold else ''
-            td = ' text-decoration="underline"' if ul else ''
-            fill_c = "#18181b" if bg == "#d8d8d8" else ("#ffffff" if bg in ("#52a31c", "#c92a2a") else fg)
-            texts.append(f'<text x="{cur_x:.1f}" y="{y}" fill="{fill_c}"{fw}{td} xml:space="preserve">{html.escape(txt)}</text>')
-            cur_x += px_w + (6.0 if bg else 0.0)
-        svg.extend(rects)
-        svg.extend(texts)
-    svg.append("</svg>")
+                svg.append(f'<rect x="{cur_x - 2:.1f}" y="{y - 17}" width="{px_w + 4:.1f}" height="24" rx="4.5" fill="{bg}"/>')
+                if bg == "#e2e8f0":
+                    fg = "#0f172a"
+                elif bg == "#16a34a":
+                    fg = "#08170f"
+                elif bg == "#d97706":
+                    fg = "#10131c"
+                else:
+                    fg = "#ffffff"
+            # Place padded columns explicitly for SVG engines that use their own
+            # font metrics for textLength or trim leading and trailing whitespace.
+            text_x = cur_x
+            for part in re.split(r"( {2,})", txt):
+                visible = part.strip(" ")
+                lead = len(part) - len(part.lstrip(" "))
+                text_w = _vis_width(visible) * cell
+                if visible:
+                    weight = ' font-weight="700"' if bold else ''
+                    decoration = ' text-decoration="underline"' if ul else ''
+                    svg.append(f'<text x="{text_x + lead * cell:.1f}" y="{y}" textLength="{text_w:.1f}" lengthAdjust="spacingAndGlyphs" fill="{fg}"{weight}{decoration}>{_svg_escape(visible)}</text>')
+                text_x += _vis_width(part) * cell
+            cur_x += px_w
+    svg.append("</g></svg>")
     return "\n".join(svg)
 
 
 def render_nodeseek_md(data, lang=None, site_url=None):
-    """Clean image-based NodeSeek multi-tab format (strict 4-colon outer, 3-colon inner, no credits wall)."""
-    lang = (lang or data.get("lang") or "zh").lower()
-    L = I18N.get(lang, I18N["zh"])
-    s_url = (site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
-    r_url = (data.get("report_url") or s_url).rstrip("/")
-    tabs = L["tabs"]
-    keys = ["full", "overview", "disk", "endurance", "netip", "meta"]
-    blocks = []
-    for lbl, key in zip(tabs, keys):
-        blocks.append(f"::: tab-item {lbl}\n![{lbl}]({r_url}/{key}.svg)\n:::")
-    return (
-        f"{L['res_link']}：[{r_url}]({r_url})\n\n"
-        f":::: tabs\n"
-        + "\n\n".join(blocks)
-        + "\n::::\n"
-    )
+    """Render the NodeSeek image tabs with the visual summary first."""
+    L = I18N[_report_lang(data, lang)]
+    s_url = str(site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
+    r_url = str(data.get("report_url") or s_url).rstrip("/")
+    tabs = [L["card_tab"], *L["tabs"]]
+    keys = ("card", *REPORT_PAGES)
+    blocks = [f"::: tab-item {label}\n![{label}]({r_url}/{key}.svg)\n:::" for label, key in zip(tabs, keys)]
+    return f"{L['res_link']}：[{r_url}]({r_url})\n\n:::: tabs\n" + "\n\n".join(blocks) + "\n::::\n"
 
 
 def render_standard_md(data, lang=None, site_url=None):
-    """Clean image-based Markdown format (report link + full SVG image, no credits wall)."""
-    lang = (lang or data.get("lang") or "zh").lower()
-    L = I18N.get(lang, I18N["zh"])
-    s_url = (site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
-    r_url = (data.get("report_url") or s_url).rstrip("/")
+    """Render the visual summary and a collapsible full terminal report."""
+    lang = _report_lang(data, lang)
+    L = I18N[lang]
+    s_url = str(site_url or data.get("site_url") or DEFAULT_SITE_URL).rstrip("/")
+    r_url = str(data.get("report_url") or s_url).rstrip("/")
+    summary = "完整终端报告" if lang == "zh" else "Full Terminal Report"
     return (
         f"{L['res_link']}：[{r_url}]({r_url})\n\n"
-        f"![DiskQuality]({r_url}/full.svg)\n"
+        f"![DiskQuality Visual Card]({r_url}/card.svg)\n\n"
+        f"<details>\n<summary>{summary}</summary>\n\n"
+        f"![DiskQuality Full Report]({r_url}/full.svg)\n\n</details>\n"
     )
+
+
+_CARD_INK = "#edf4ff"
+_CARD_MUTED = "#a2b2c9"
+_CARD_LINE = "#26344a"
+_CARD_GREEN, _CARD_CYAN = "#22c55e", "#38bdf8"
+_CARD_AMBER, _CARD_ROSE, _CARD_VIOLET = "#f59e0b", "#f43f5e", "#a78bfa"
+_REGION_COLORS = {"reg_ap": _CARD_CYAN, "reg_us": _CARD_VIOLET, "reg_eu": _CARD_GREEN}
+_HUB_REGIONS = {"JP": "reg_ap", "SG": "reg_ap", "HK": "reg_ap", "US": "reg_us",
+                "DE": "reg_eu", "UK": "reg_eu", "NL": "reg_eu"}
+
+
+def _hub_region(name):
+    match = re.search(r"\(([A-Z]{2})\)", name)
+    return _HUB_REGIONS.get(match[1]) if match else None
+
+
+def _fit_svg_text(value, width, size):
+    """Fit a conservative local-font budget, allowing for CJK and wide fallback glyphs."""
+    value = " ".join(_xml_text(_shown(value)).split())
+    widths = [size * (1.12 if _vis_width(ch) == 2 or ord(ch) > 127 else
+                      0.98 if ch in "MW@%&#" else 0.72 if ch.isupper() else
+                      0.67 if ch.isdigit() or ch.islower() else 0.57) for ch in value]
+    if sum(widths) <= width:
+        return value
+    used = size
+    for i, advance in enumerate(widths):
+        used += advance
+        if used > width:
+            return value[:i].rstrip() + "…"
+    return value
+
+
+class _VisualSVG:
+    def __init__(self):
+        self.parts = []
+
+    def rect(self, x, y, w, h, fill, radius=0, stroke="none"):
+        self.parts.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="{radius:g}" fill="{fill}" stroke="{stroke}"/>')
+
+    def line(self, x1, y1, x2, y2, color=_CARD_LINE, width=1):
+        self.parts.append(f'<line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" stroke="{color}" stroke-width="{width:g}" stroke-linecap="round"/>')
+
+    def circle(self, x, y, r, fill):
+        self.parts.append(f'<circle cx="{x:g}" cy="{y:g}" r="{r:g}" fill="{fill}"/>')
+
+    def text(self, x, y, value, width, size=14, color=_CARD_MUTED, weight=500, anchor="start"):
+        value = _fit_svg_text(value, width, size)
+        self.parts.append(f'<text x="{x:g}" y="{y:g}" fill="{color}" font-size="{size}" font-weight="{weight}" text-anchor="{anchor}">{html.escape(value)}</text>')
+
+    def panel(self, x, y, w, h):
+        self.rect(x, y, w, h, "#131926", 16, "#232d42")
+
+    def pill(self, x, y, w, value, color=_CARD_CYAN, size=11):
+        self.rect(x, y, w, 24, "#192437", 12, "#2a3b53")
+        self.text(x + w / 2, y + 16, value, w - 12, size, color, 700, "middle")
+
+    def bar(self, x, y, w, fraction, color=_CARD_GREEN, height=5):
+        self.rect(x, y, w, height, "#26344a", height / 2)
+        if fraction is not None and fraction > 0:
+            self.rect(x, y, w * min(fraction, 1), height, color, height / 2)
+
+    def ring(self, x, y, score, color):
+        radius = 42
+        length = 2 * math.pi * radius
+        self.parts.append(f'<circle cx="{x}" cy="{y}" r="{radius}" fill="none" stroke="#26344a" stroke-width="7"/>')
+        if score is not None and score > 0:
+            offset = length * (1 - min(score, 100) / 100)
+            self.parts.append(f'<circle cx="{x}" cy="{y}" r="{radius}" fill="none" stroke="{color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{length:.4f} {length:.4f}" stroke-dashoffset="{offset:.4f}" transform="rotate(-90 {x} {y})"/>')
+        self.text(x, y + 7, "N/A" if score is None else _fmt(score), 77, 23, _CARD_INK, 760, "middle")
+
+
+def _scale_fraction(value, maximum):
+    return min(value, maximum) / maximum if value is not None and value > 0 and maximum > 0 else 0
+
+
+def _runs(points):
+    run = []
+    for point in points:
+        if point is not None:
+            run.append(point)
+        elif run:
+            yield run
+            run = []
+    if run:
+        yield run
+
+
+def _card_radar(svg, x, y, disk, zh):
+    labels = ("顺序", "4K", "延迟", "并发", "持久", "元数据") if zh else ("Seq", "4K", "Lat", "Conc", "Sust", "Meta")
+    vals = [_num(disk.get(k)) for k in _RADAR_KEYS]
+    cx, cy, radius = x + 217, y + 202, 110
+
+    def point(i, ratio):
+        angle = math.pi * (i / 3 - 0.5)
+        return cx + math.cos(angle) * radius * ratio, cy + math.sin(angle) * radius * ratio
+
+    def coords(points):
+        return " ".join(f"{px:.1f},{py:.1f}" for px, py in points)
+
+    for ratio in (.25, .50, .75, 1):
+        svg.parts.append(f'<polygon points="{coords(point(i, ratio) for i in range(6))}" fill="none" stroke="{_CARD_LINE}"/>')
+        svg.text(cx + 6, cy - radius * ratio + 11, f"{ratio:.0%}", 42, 9, "#879ab5")
+    for i, label in enumerate(labels):
+        px, py = point(i, 1)
+        svg.line(cx, cy, px, py)
+        lx, ly = point(i, 1.28)
+        anchor = "middle" if i in (0, 3) else "start" if i < 3 else "end"
+        svg.text(lx, ly + 5, f"{label} {_shown(disk.get(_RADAR_KEYS[i]))}", 86, 12, _CARD_INK, 650, anchor)
+    vertices = [point(i, _scale_fraction(value, 100)) if value is not None else None for i, value in enumerate(vals)]
+    if all(p is not None for p in vertices):
+        svg.parts.append(f'<polygon points="{coords(vertices)}" fill="#22c55e" fill-opacity=".20" stroke="#45dacc" stroke-width="2"/>')
+    else:
+        for a, b in zip(vertices, vertices[1:] + vertices[:1]):
+            if a is not None and b is not None:
+                svg.line(*a, *b, "#45dacc", 2)
+    for vertex in vertices:
+        if vertex is not None:
+            svg.circle(*vertex, 3.5, "#6ee7b7")
+
+
+def _card_endurance(svg, x, y, sus, plan, zh):
+    seq = _mapping(sus.get("seq_write"))
+    if seq.get("error"):
+        seq = {}
+    written = _num(seq.get("w_bytes"))
+    badges = (
+        (("已写入 " if zh else "Written ") + _fmt(written / 1024**3 if written is not None else None, 1, " GB"), _CARD_GREEN),
+        (("均速 " if zh else "Avg ") + _fmt(seq.get("w_bw_mbs"), 1, " MB/s"), _CARD_CYAN),
+        ("p99 " + _fmt(seq.get("w_p99_ms"), 1, " ms"), _CARD_AMBER),
+    )
+    for i, (label, color) in enumerate(badges):
+        svg.pill(x + 19 + i * 150, y + 47, 142, label, color)
+
+    points = _rows(sus.get("timeline"))
+    series = [[_num(p.get(key)) for p in points] for key in ("w_mb", "w_await")]
+    if not any(v is not None for values in series for v in values):
+        svg.text(x + 20, y + 118, "无逐分钟采样" if zh else "No per-minute samples", 580)
+        return
+    left, top, w, h = x + 61, y + 137, 574, 171
+    bottom = top + h
+    scales = [max(1, max((v for v in values if v is not None), default=0)) for values in series]
+    slot = w / len(points)
+    phase = [_sequential(pt, plan) for pt in points]
+    for i, is_seq in enumerate(phase):
+        svg.rect(left + slot * i, top, slot + .1, h, "#152b2c" if is_seq else "#22273e")
+    svg.text(left, top - 10, "wMB/s", 76, 11, _CARD_GREEN)
+    svg.text(left + w, top - 10, "w_await · ms", 110, 11, _CARD_AMBER, anchor="end")
+    svg.pill(x + 20, y + 83, 165, "A · 顺序写入" if zh else "A · Sequential write", _CARD_GREEN)
+    svg.pill(x + 195, y + 83, 165, "B · 随机混合" if zh else "B · Random mix", _CARD_VIOLET)
+    for i in range(5):
+        gy = bottom - h * i / 4
+        svg.line(left, gy, left + w, gy)
+        svg.text(left - 8, gy + 4, _fmt(scales[0] * (i / 4)), 47, 10, anchor="end")
+        svg.text(left + w + 8, gy + 4, _fmt(scales[1] * (i / 4)), 46, 10)
+
+    for idx, values in enumerate(series):
+        color = (_CARD_GREEN, _CARD_AMBER)[idx]
+        plot = [(left + slot * (i + .5), bottom - h * _scale_fraction(v, scales[idx]))
+                if v is not None else None for i, v in enumerate(values)]
+        for run in _runs(plot):
+            if idx == 0 and len(run) > 1:
+                # Horizontal tangents at each real sample smooth the area without overshoot.
+                x0, y0 = run[0]
+                path = [f"M{x0:.2f},{y0:.2f}"]
+                for (xa, ya), (xb, yb) in zip(run, run[1:]):
+                    mid = (xa + xb) / 2
+                    path.append(f"C{mid:.2f},{ya:.2f} {mid:.2f},{yb:.2f} {xb:.2f},{yb:.2f}")
+                curve = " ".join(path)
+                svg.parts.append(f'<path d="{curve} V{bottom} H{x0:.2f} Z" fill="url(#card-area)"/>')
+                svg.parts.append(f'<path d="{curve}" fill="none" stroke="{color}" stroke-width="2"/>')
+            elif len(run) == 1:
+                svg.circle(*run[0], 3, color)
+            else:
+                coords = " ".join(f"{px:.2f},{py:.2f}" for px, py in run)
+                svg.parts.append(f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2" stroke-dasharray="6 5"/>')
+    tick_ids = {round(i * (len(points) - 1) / 6) for i in range(7)}
+    for i in sorted(tick_ids):
+        minute = _num(points[i].get("min"))
+        if minute is not None:
+            svg.text(left + slot * (i + .5), bottom + 20, _fmt(minute, 0) + (" 分" if zh else "m"),
+                     50, 11, anchor="middle")
+
+
+def _card_workloads(svg, x, y, rows, zh):
+    svg.text(x + 38, y, "负载 / 方向" if zh else "WORKLOAD / DIRECTION", 190, 11)
+    svg.text(x + 275, y, "MB/s", 60, 11)
+    svg.text(x + 394, y, "IOPS", 50, 11)
+    svg.text(x + 489, y, "p99 ms", 85, 11)
+    maximum = max((bw for _, _, bw, _, _ in rows if bw is not None), default=1)
+    for i, (label, direction, bw, iops, tail) in enumerate(rows):
+        cy = y + 27 + i * 25
+        color = _CARD_CYAN if direction == "R" else _CARD_GREEN
+        if i % 2 == 0:
+            svg.rect(x + 12, cy - 16, 565, 24, "#172131", 5)
+        svg.text(x + 20, cy, direction, 16, 11, color, 700)
+        svg.text(x + 38, cy, label, 170, 11, _CARD_INK, 650)
+        svg.bar(x + 205, cy - 7, 62, _scale_fraction(bw, maximum), color)
+        svg.text(x + 275, cy, _fmt(bw, 2), 86, 12, _CARD_INK)
+        svg.text(x + 394, cy, _fmt(iops, 0), 85, 12, _CARD_INK)
+        svg.text(x + 489, cy, _fmt(tail, 2), 82, 12, _CARD_AMBER)
+
+
+def _preview_workloads(data):
+    matrix = {str(r["name"]): r for r in _fio_rows(_module(data, "matrix"))}
+    conc = {str(r["name"]): r for r in _fio_rows(_module(data, "concurrency"))}
+    jobs = [(matrix, f"{name}_{direction}_{depth}", f"{name} {depth}", (direction,))
+            for name, depths in (("SEQ1M", ("Q32", "Q1")), ("RND4K", ("Q1", "Q64")))
+            for depth in depths for direction in ("R", "W")]
+    jobs.extend((conc, name, name, directions) for name, directions in (
+        ("PT_SEED_16K_32T", ("R",)), ("BACKUP_64K_16T", ("R", "W"))))
+    rows = []
+    for source, key, label, directions in jobs:
+        row = source.get(key, {})
+        for direction in directions:
+            prefix = direction.lower()
+            values = tuple(_num(row.get(f"{prefix}_{metric}")) for metric in ("bw_mbs", "iops", "p99_ms"))
+            if any(v is not None and v > 0 for v in values):
+                rows.append((label, direction, *values))
+    return rows
+
+
+def _card_connectivity(svg, x, y, hubs, downloads, ipq, zh):
+    if hubs:
+        maximum = max(1, max((_num(h.get("max")) or 0 for h in hubs), default=0))
+        for i, hub in enumerate(hubs):
+            cy = y + i * 23
+            label = _shown(hub.get("hub"))
+            color = _REGION_COLORS.get(_hub_region(label), _CARD_MUTED)
+            svg.circle(x + 20, cy - 4, 3, color)
+            svg.text(x + 30, cy, label, 141, 11, _CARD_INK, 620)
+            a, mid, b = (_num(hub.get(key)) for key in ("min", "avg", "max"))
+            start, length = x + 173, 139
+            svg.line(start, cy - 4, start + length, cy - 4, "#293951", 3)
+            if mid is not None and mid >= 0:
+                if a is not None and b is not None and a >= 0 and b >= 0:
+                    svg.line(start + length * _scale_fraction(a, maximum), cy - 4,
+                             start + length * _scale_fraction(b, maximum), cy - 4, color, 4)
+                svg.circle(start + length * _scale_fraction(mid, maximum), cy - 4, 4, color)
+                value = " / ".join(_fmt(v) for v in (a, mid, b))
+            else:
+                value = ("超时" if zh else "Timeout") if mid is not None else "—"
+            svg.text(x + 325, cy, value, 170, 11)
+        y += len(hubs) * 23 + 10
+    if downloads:
+        svg.text(x + 20, y, "大文件下行" if zh else "BULK DOWNLOAD", 145, 11)
+        for i, dl in enumerate(downloads):
+            svg.pill(x + 20 + i * 250, y + 8, 238,
+                     f"{_shown(dl.get('name'))} · {_fmt(dl.get('mbs'), 2, ' MB/s')}")
+        y += 59
+    probes = {str(p.get("service")): p.get("ok") for p in _rows(ipq.get("probes"))}
+    if probes:
+        svg.text(x + 20, y, "平台可达性" if zh else "PLATFORM REACHABILITY", 250, 11)
+        for i, (service, _) in enumerate(UNLOCK_PROBES):
+            state = probes.get(service)
+            mark, color = ("✔", "#6ee7a1") if state is True else ("✘", "#fb7185") if state is False else ("—", _CARD_MUTED)
+            svg.pill(x + 18 + (i % 5) * 101, y + 10 + (i // 5) * 29, 96,
+                     f"{mark} {service}", color, 9.5)
+    if not hubs and not downloads and not probes:
+        svg.text(x + 20, y, "未测 / 未包含" if zh else "Skipped / Not Included", 500)
+
+
+def render_visual_card_svg(data, lang=None, site_url=None):
+    """Render a standalone 1200-pixel telemetry infographic from available report fields."""
+    lang = _report_lang(data, lang)
+    zh = lang == "zh"
+    L = I18N[lang]
+    t, plan = _mapping(data.get("topology")), _mapping(data.get("plan"))
+    disk, over, gb, ipq, sus, net = (_mapping(_module(data, key)) for key in
+                                     ("disk_score", "overselling", "geekbench", "ip_quality", "sustained", "network"))
+    meta, life = (_mapping(_module(data, key, "meta")) for key in ("metadata", "lifetime"))
+    hubs = _rows(net.get("hubs"))[:8]
+    downloads = _rows(net.get("downloads"))[:2]
+    rows = _preview_workloads(data)
+    has_radar = any(_num(disk.get(k)) is not None for k in _RADAR_KEYS)
+    analytics_h = 360 if has_radar or _rows(sus.get("timeline")) else 142 if sus else 108
+    perf_h = max(111, 92 + 25 * len(rows),
+                 90 + 23 * len(hubs) + (10 if hubs else 0) + (59 if downloads else 0)
+                 + (64 if _rows(ipq.get("probes")) else 0))
+    analytics_y = 409
+    perf_y = analytics_y + analytics_h + 16
+    meta_y = perf_y + perf_h + 16
+    meta_h = (105 if meta and life else 83) if meta or life else 0
+    foot_y = meta_y + meta_h + (16 if meta_h else 0)
+    height = foot_y + (82 if data.get("report_url") else 56)
+    svg = _VisualSVG()
+    svg.parts.extend([
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="{height}" viewBox="0 0 1200 {height}" role="img" aria-labelledby="card-title">',
+        f'<title id="card-title">DiskQuality · {_svg_escape(L["card_tab"])}</title>',
+        '<defs><linearGradient id="card-hero"><stop stop-color="#11282c"/><stop offset="1" stop-color="#151c31"/></linearGradient>',
+        '<linearGradient id="card-accent"><stop stop-color="#22c55e"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>',
+        '<linearGradient id="card-area" x2="0" y2="1"><stop stop-color="#22c55e" stop-opacity=".42"/><stop offset="1" stop-color="#22c55e" stop-opacity=".03"/></linearGradient>',
+        '<pattern id="card-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#7ba4bf" opacity=".18"/></pattern></defs>',
+        '<g font-family="system-ui,Segoe UI,Microsoft YaHei,PingFang SC,Noto Sans CJK SC,sans-serif">',
+    ])
+    svg.rect(0, 0, 1200, height, "#0b0f17", 22)
+    svg.rect(1, 1, 1198, height - 2, "none", 21, "#232d42")
+    svg.rect(24, 24, 1152, 166, "url(#card-hero)", 17, "#2a3c51")
+    svg.rect(25, 25, 1150, 164, "url(#card-grid)", 16)
+    svg.rect(44, 46, 32, 5, "url(#card-accent)", 2.5)
+    identity = ("客观存储遥测" if zh else "OBJECTIVE STORAGE TELEMETRY")
+    if data.get("sample_preview") is True:
+        identity += " · " + ("示例数据" if zh else "SAMPLE DATA")
+    svg.text(86, 53, identity, 460, 12, "#92e7da", 750)
+    svg.text(42, 113, "DiskQuality", 505, 59, _CARD_INK, 790)
+    svg.pill(44, 135, 164, data.get("version") or VERSION, _CARD_GREEN)
+    svg.pill(216, 135, 117, t.get("masked_ip"))
+    platform = " / ".join(str(t[k]) for k in ("profile", "virt", "arch") if t.get(k))
+    svg.pill(341, 135, 206, platform or "—", _CARD_VIOLET)
+    svg.line(570, 46, 570, 167, "#33475c")
+    svg.text(595, 54, "CPU", 55, 11, "#92e7da", 700)
+    svg.text(651, 54, t.get("cpu_model"), 391, 13, _CARD_INK, 650)
+    cores = _shown(t.get("cpu_cores"))
+    core_unit = "核" if zh else "core" if _num(cores) == 1 else "cores"
+    svg.text(1154, 54, f"{cores} {core_unit}", 105, 12, anchor="end")
+    svg.text(595, 80, "磁盘" if zh else "DISK", 56, 11, "#92e7da", 700)
+    svg.text(651, 80, t.get("disk_model"), 500, 13, _CARD_INK, 650)
+    total, used, avail = (_num(plan.get(f"disk_{key}_gb")) for key in ("total", "used", "avail"))
+    cap_labels = ("已用", "可用", "总容量") if zh else ("Used", "Avail", "Total")
+    for i, (label, value) in enumerate(zip(cap_labels, (used, avail, total))):
+        svg.text(595 + i * 185, 112, f"{label} {_fmt(value, 1, ' GB')}", 178, 12, _CARD_INK)
+    fractions = [_scale_fraction(v, total or 0) for v in (used, avail)]
+    svg.bar(595, 122, 558, 0, _CARD_CYAN, 7)
+    if fractions[0]:
+        svg.rect(595, 122, 558 * fractions[0], 7, _CARD_GREEN, 3.5)
+    free_fraction = min(fractions[1], 1 - fractions[0])
+    if free_fraction > 0:
+        svg.rect(595 + 558 * fractions[0], 122, 558 * free_fraction, 7, _CARD_CYAN, 3.5)
+    svg.text(595, 159, data.get("report_time"), 550, 12)
+
+    labels = ("硬盘综合评分", "超售指数 ↓", "CPU Geekbench", "IP 综合风控 ↓") if zh else (
+        "Disk Composite Score", "Overselling Index ↓", "CPU Geekbench", "IP Composite Risk ↓")
+    for i, label in enumerate(labels):
+        x = 24 + i * 292
+        svg.panel(x, 206, 276, 187)
+        color = (_CARD_GREEN, _CARD_AMBER, _CARD_VIOLET, _CARD_CYAN)[i]
+        svg.rect(x + 18, 226, 3, 14, color, 1.5)
+        svg.text(x + 29, 238, label, 232, 15, _CARD_INK, 740)
+    ds = _num(disk.get("score"))
+    svg.ring(94, 312, ds, _CARD_GREEN)
+    svg.text(151, 311, "/ 100", 90, 17)
+    if ds is not None and disk.get("grade"):
+        svg.pill(151, 326, 86, f"{'等级' if zh else 'Grade'} {disk['grade']}", _CARD_GREEN)
+    score = _num(over.get("score"))
+    tier = _shown(over.get("tier"))
+    short_tiers = {"t0": "Near-Dedicated", "t1": "Light Sharing",
+                   "t2": "Moderate Oversell", "t3": "Heavy Oversell"}
+    tier_label = L.get(f"os_{tier}", tier) if zh else short_tiers.get(tier, tier)
+    over_color = _CARD_ROSE if score is not None and score > 60 else _CARD_AMBER if score is not None and score > 35 else _CARD_GREEN
+    svg.ring(386, 312, score, over_color)
+    svg.text(444, 300, tier_label if score is not None else "/ 100", 132, 12, _CARD_INK, 670)
+    if over.get("media"):
+        svg.pill(442, 316, 130, f"{'基准' if zh else 'Ref'} · {_shown(over['media'])}", over_color)
+    gb_scores = [_num(gb.get(k)) for k in ("single_core", "multi_core")]
+    skipped = "未测 / 未包含" if zh else "Skipped / Not Included"
+    if any(value is not None for value in gb_scores):
+        svg.pill(626, 251, 230, gb.get("version") or "Geekbench", _CARD_VIOLET)
+        for i, (label, value, color) in enumerate(zip((L["gb_sc"], L["gb_mc"]), gb_scores, (_CARD_CYAN, _CARD_VIOLET))):
+            y = 300 + i * 40
+            svg.text(628, y, label, 135, 12, _CARD_INK, 700)
+            svg.text(865, y, _fmt(value, 0), 95, 15, _CARD_INK, 720, "end")
+            svg.bar(628, y + 7, 237, _scale_fraction(value, max(1, *(v or 0 for v in gb_scores))), color)
+    else:
+        svg.text(628, 299, skipped, 236)
+    risk = _num(ipq.get("composite_risk"))
+    risk_color = _CARD_ROSE if risk is not None and risk > 55 else _CARD_AMBER if risk is not None and risk > 25 else _CARD_GREEN
+    if ipq:
+        svg.ring(971, 312, risk, risk_color)
+        ip_meta = _mapping(ipq.get("meta"))
+        native = str(ip_meta.get("native_type") or "")
+        for label, local in (("机房/Datacenter", "机房" if zh else "DC"),
+                             ("住宅/Residential", "住宅" if zh else "Residential"),
+                             ("原生/Native", "原生" if zh else "Native"),
+                             ("广播/Broadcast", "广播" if zh else "Broadcast")):
+            native = native.replace(label, local)
+        hosting = str(ip_meta.get("hosting") or "")
+        if hosting.lower() in ("datacenter", "hosting"):
+            hosting = "机房" if zh else "DC"
+        identity = native
+        if hosting and hosting not in native:
+            identity = " · ".join(part for part in (native, hosting) if part)
+        if identity:
+            svg.pill(1025, 256, 137, identity, _CARD_VIOLET, 10)
+        tier = ipq.get("composite_tier")
+        svg.text(1028, 297, L.get(f"risk_{tier}", tier), 136, 11)
+        port = ipq.get("port25_open")
+        port_label = L["p25_ok"] if port is True else ("未开放" if zh else "Blocked") if port is False else "—"
+        svg.pill(1025, 306, 137, f"Port 25 · {port_label}",
+                 _CARD_ROSE if port is False else _CARD_GREEN if port is True else _CARD_MUTED, 10)
+        hits = ipq.get("dnsbl_hits")
+        dns = f"{len(hits)}/{_shown(ipq.get('dnsbl_total', 3))}" if isinstance(hits, list) else "—"
+        svg.pill(1025, 336, 137, f"DNSBL · {dns}", _CARD_ROSE if hits else _CARD_MUTED)
+    else:
+        svg.text(920, 299, skipped, 236)
+
+    svg.panel(24, analytics_y, 432, analytics_h)
+    svg.text(44, analytics_y + 32, "六维硬盘雷达" if zh else "6-Axis Disk Radar", 382, 17, _CARD_INK, 750)
+    if has_radar:
+        _card_radar(svg, 24, analytics_y, disk, zh)
+    else:
+        svg.text(44, analytics_y + 71, skipped, 382)
+    svg.panel(472, analytics_y, 704, analytics_h)
+    svg.text(492, analytics_y + 32, "50% 容量持久曲线" if zh else "50% Capacity Endurance", 656, 17, _CARD_INK, 750)
+    if sus:
+        _card_endurance(svg, 472, analytics_y, sus, plan, zh)
+    else:
+        svg.text(492, analytics_y + 71, skipped, 656)
+
+    svg.panel(24, perf_y, 589, perf_h)
+    svg.text(44, perf_y + 30, "FIO 矩阵与 PT / 备份" if zh else "FIO Matrix & PT / Backup", 544, 17, _CARD_INK, 750)
+    if rows:
+        _card_workloads(svg, 24, perf_y + 56, rows, zh)
+    else:
+        svg.text(44, perf_y + 67, skipped, 544)
+    svg.panel(629, perf_y, 547, perf_h)
+    svg.text(649, perf_y + 30, "全球延迟与平台可达性" if zh else "Global RTT & Platform Access", 504, 17, _CARD_INK, 750)
+    if hubs:
+        svg.text(649, perf_y + 49, "TCP RTT · ms", 100, 10)
+        for i, (key, color) in enumerate(_REGION_COLORS.items()):
+            svg.text(760 + 49 * i, perf_y + 49, L[key], 44, 10, color, 650)
+        svg.text(1131, perf_y + 49, "min / avg / max", 105, 10, anchor="end")
+    _card_connectivity(svg, 629, perf_y + 70, hubs, downloads, ipq, zh)
+
+    if meta_h:
+        svg.panel(24, meta_y, 1152, meta_h)
+        svg.text(44, meta_y + 27, "元数据与介质寿命" if zh else "Metadata & Media Lifetime", 1107, 16, _CARD_INK, 750)
+        if meta:
+            metrics = ("创建", "Stat", "读取", "删除") if zh else ("Create", "Stat", "Read", "Unlink")
+            for i, (label, key) in enumerate(zip(metrics, ("create_fps", "stat_fps", "read_fps", "delete_fps"))):
+                svg.pill(44 + i * 279, meta_y + 37, 266, f"{label} · {_fmt(meta.get(key), 0, ' f/s')}", _CARD_GREEN)
+        if life:
+            ly = meta_y + (83 if meta else 56)
+            hours = life.get("smart_power_on_hours")
+            smart = f"SMART · {_shown(life.get('smart_raw_status'))}"
+            if hours is not None:
+                smart += f" · {_shown(hours)} h"
+            ext = L["ext4_val"].format(cr=_shown(life.get("fs_created")), mc=_shown(life.get("mount_count")),
+                                       lw=_shown(life.get("lifetime_writes")))
+            svg.text(44, ly, smart, 386, 12)
+            svg.text(438, ly, f"Ext4 · {ext}", 713, 12)
+    svg.line(25, foot_y, 1175, foot_y)
+    svg.text(32, foot_y + 29, "github.com/arimrs/DiskQuality", 330, 13, _CARD_CYAN, 680)
+    s_url = site_url or data.get("site_url") or DEFAULT_SITE_URL
+    svg.text(1168, foot_y + 29, f"bash <(curl -sL {s_url})", 730, 13, _CARD_INK, 620, "end")
+    if data.get("report_url"):
+        svg.text(32, foot_y + 55, data["report_url"], 1135, 12)
+    svg.parts.append("</g></svg>")
+    return "\n".join(svg.parts)
 
 
 def thorough_cleanup(work_dir, target_dir="/", do_trim=False):
@@ -1614,7 +2203,7 @@ def run_benchmark_cli(args):
         try:
             req = urllib.request.Request(
                 args.upload_url, data=json.dumps(data, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.8"}, method="POST",
+                headers={"Content-Type": "application/json", "User-Agent": "DiskQuality-CLI/1.0.9"}, method="POST",
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 rj = json.loads(resp.read().decode("utf-8"))

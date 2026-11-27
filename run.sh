@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DiskQuality v1.0.8 — Bilingual PT / Storage / Backup VPS Objective Benchmark
+# DiskQuality v1.0.9 — Bilingual PT / Storage / Backup VPS Objective Benchmark
 # ==============================================================================
 set -euo pipefail
 
 SITE_URL="${DQ_SITE_URL:-https://test.sakurado.top}"
-SCRIPT_VERSION="v1.0.8"
-SCRIPT_UPDATED="2026.11.26"
+SCRIPT_VERSION="v1.0.9"
+SCRIPT_UPDATED="2026.11.27"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 CYAN='\033[1;36m'
@@ -79,14 +79,21 @@ read_tty() {
     echo "$ans"
 }
 
-cat << 'BANNER'
-██████╗ ██╗███████╗██╗  ██╗ ██████╗ ██╗   ██╗ █████╗ ██╗     ██╗████████╗██╗   ██╗
-██╔══██╗██║██╔════╝██║ ██╔╝██╔═══██╗██║   ██║██╔══██╗██║     ██║╚══██╔══╝╚██╗ ██╔╝
-██║  ██║██║███████╗█████╔╝ ██║   ██║██║   ██║███████║██║     ██║   ██║    ╚████╔╝ 
-██║  ██║██║╚════██║██╔═██╗ ██║▄▄ ██║██║   ██║██╔══██║██║     ██║   ██║     ╚██╔╝  
-██████╔╝██║███████║██║  ██╗╚██████╔╝╚██████╔╝██║  ██║███████╗██║   ██║      ██║   
-╚═════╝ ╚═╝╚══════╝╚═╝  ╚═╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝      ╚═╝   
-BANNER
+frame_open() {
+    local title="$1" columns="$2" rule
+    printf -v rule '%*s' "$((53 - columns))" ''
+    printf '%b╭─%b %s %b%s╮%b\n' "$CYAN" "$GREEN" "$title" "$CYAN" "${rule// /─}" "$RESET"
+}
+frame_row() {
+    printf '%b│%b %b%s%b  %s\n' "$CYAN" "$RESET" "$GREEN" "$1" "$RESET" "$2"
+}
+frame_close() {
+    local rule
+    printf -v rule '%56s' ''
+    printf '%b╰%s╯%b\n' "$CYAN" "${rule// /─}" "$RESET"
+}
+
+printf '%b╭─%b DiskQuality %b─╮%b\n' "$CYAN" "$GREEN" "$CYAN" "$RESET"
 
 START_KAOMOJIS=(
     '(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧' '( •̀ ω •́ )✧' '(๑•̀ㅂ•́)و✧' 'ヾ(•ω•`)o'
@@ -112,11 +119,15 @@ if [[ -z "$LANG_CODE" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · 20-Min Budget) ${START_EMO}${RESET}"
-    echo -e "${GREEN}Version:${RESET} ${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}Command:${RESET} bash <(curl -sL ${SITE_URL})"
+    echo -e "${CYAN}PT / Storage / Backup VPS Objective Benchmark (50% Adaptive Capacity · ${MINUTES}-Min Budget) ${START_EMO}${RESET}"
+    frame_open "Run details" 11
+    frame_row "Version" "${SCRIPT_VERSION} (${SCRIPT_UPDATED})"
+    frame_row "Command" "bash <(curl -sL ${SITE_URL})"
 else
-    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · 20 分钟预算）${START_EMO}${RESET}"
-    echo -e "${GREEN}脚本版本：${RESET}${SCRIPT_VERSION} (${SCRIPT_UPDATED})   ${GREEN}一键命令：${RESET}bash <(curl -sL ${SITE_URL})"
+    echo -e "${CYAN}PT / 大盘 / 备份机全维度客观测评（50% 容量自适应 · ${MINUTES} 分钟预算）${START_EMO}${RESET}"
+    frame_open "运行信息" 8
+    frame_row "脚本版本" "${SCRIPT_VERSION} (${SCRIPT_UPDATED})"
+    frame_row "一键命令" "bash <(curl -sL ${SITE_URL})"
 fi
 
 # Live Taipei Time & Run Counter (Total / Today)
@@ -134,7 +145,9 @@ if [[ -n "$STATS_JSON" ]]; then
 fi
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${GREEN}Run Time (Taipei Time):${RESET} ${TPE_TIME}  |  ${GREEN}Total Runs:${RESET} ${TOTAL_RUNS}  |  ${GREEN}Today Runs:${RESET} ${TODAY_RUNS}"
+    frame_row "Taipei Time" "${TPE_TIME}"
+    frame_row "Runs" "${TOTAL_RUNS} total · ${TODAY_RUNS} today"
+    frame_close
     echo ""
     echo -e "${CYAN}[Acknowledgments & Upstream Tools]${RESET}"
     echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping) | Geekbench (https://www.geekbench.com)"
@@ -143,7 +156,9 @@ if [[ "$LANG_CODE" == "en" ]]; then
     echo "  · Cloudflare Speed (https://speed.cloudflare.com) | CacheFly (https://www.cachefly.com)"
     echo "  · Credits: NodeQuality (github.com/LloydAsp/NodeQuality) | HardwareQuality & IPQuality (github.com/xykt)"
 else
-    echo -e "${GREEN}运行时间 (Taipei Time)：${RESET}${TPE_TIME}  |  ${GREEN}累计运行：${RESET}${TOTAL_RUNS} 次  |  ${GREEN}今日运行：${RESET}${TODAY_RUNS} 次"
+    frame_row "台北时间" "${TPE_TIME}"
+    frame_row "运行次数" "累计 ${TOTAL_RUNS} 次 · 今日 ${TODAY_RUNS} 次"
+    frame_close
     echo ""
     echo -e "${CYAN}【致谢与底层检测工具原站】${RESET}"
     echo "  · fio (https://github.com/axboe/fio) | ioping (https://github.com/koct9i/ioping) | Geekbench (https://www.geekbench.com)"
@@ -333,7 +348,10 @@ ask_yn() {
 }
 
 if [[ "$LANG_CODE" == "en" ]]; then
-    echo -e "${CYAN}[Disk Profile] Capacity ${DISK_TOTAL_GB} GB (${MEDIA_EN}) · Quick Probe: W ${PROBE_W_MBS} MB/s / R ${PROBE_R_MBS} MB/s · 50% Stress ≈ ${STRESS_EST_GB} GB${RESET}"
+    frame_open "Disk profile" 12
+    frame_row "Capacity" "${DISK_TOTAL_GB} GB (${MEDIA_EN}) · 50% stress ≈ ${STRESS_EST_GB} GB"
+    frame_row "Quick probe" "W ${PROBE_W_MBS} MB/s · R ${PROBE_R_MBS} MB/s"
+    frame_close
     RUN_CORE=$(ask_yn "1/5 Run Disk Performance Suite (ioping + FIO 14-item + fsync + PT/Backup Concurrency, ~${EST_CORE_MIN}m) (default y) [Y/n]: ")
     RUN_SUSTAINED=$(ask_yn "2/5 Run 50% Adaptive Capacity Endurance (${STRESS_EST_GB} GB) + iostat (~${EST_SUST_MIN}m) (default y) [Y/n]: ")
     RUN_NETIP=$(ask_yn "3/5 Run Global Connectivity, Bulk Download & IP Quality / Denial Risk (~0.5m) (default y) [Y/n]: ")
@@ -345,7 +363,10 @@ if [[ "$LANG_CODE" == "en" ]]; then
         GB_ANS="${GB_ANS:-1}"
     fi
 else
-    echo -e "${CYAN}[硬盘画像] 容量 ${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 实测预热：写 ${PROBE_W_MBS} MB/s / 读 ${PROBE_R_MBS} MB/s · 50% 压测 ≈ ${STRESS_EST_GB} GB${RESET}"
+    frame_open "硬盘画像" 8
+    frame_row "容量" "${DISK_TOTAL_GB} GB（${MEDIA_ZH}）· 50% 压测 ≈ ${STRESS_EST_GB} GB"
+    frame_row "实测预热" "写 ${PROBE_W_MBS} MB/s · 读 ${PROBE_R_MBS} MB/s"
+    frame_close
     RUN_CORE=$(ask_yn "1/5 运行 综合硬盘性能组（ioping 延迟 + FIO 14项 + 生产 fsync + PT/备份多并发，约 ${EST_CORE_MIN} 分钟）（回车默认 y）[Y/n]：")
     RUN_SUSTAINED=$(ask_yn "2/5 运行 50% 容量自适应持久压测（${STRESS_EST_GB} GB）+ 逐分钟 iostat（约 ${EST_SUST_MIN} 分钟）（回车默认 y）[Y/n]：")
     RUN_NETIP=$(ask_yn "3/5 运行 国际互联延迟、大文件下行与 IP 质量 / 被拒访问概率（约 30 秒）（回车默认 y）[Y/n]：")

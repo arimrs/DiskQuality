@@ -1,18 +1,39 @@
 [English](README.md) | **简体中文**
 
-# DiskQuality
+<h1 align="center"><img src="assets/hero-banner.svg" alt="DiskQuality" width="1200"></h1>
 
-[![Version](https://img.shields.io/badge/version-v1.0.8-22c55e.svg)](CHANGELOG.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="CHANGELOG.md"><kbd>v1.0.9</kbd></a>
+  <a href="LICENSE"><kbd>MIT License</kbd></a>
+  <kbd>Python 3</kbd>
+  <kbd>Linux Multi-Arch</kbd>
+  <kbd>EN/ZH Bilingual</kbd>
+</p>
 
-超轻量、中英双语（**简体中文 / English**）、纯客观数据的 Linux 深度测评套件，适用于 **PT 刷流机、大盘存储机、备份服务器、VDS 与裸金属独立服务器**，并配套极简可翻页在线报告服务端。
+超轻量、中英双语（**简体中文 / English**）、纯客观数据的 Linux 深度测评套件，适用于 **PT 刷流机、大盘存储机、备份服务器、VDS 与裸金属独立服务器**，并配套三视图在线报告。
 
 - **自适应 50% 容量算法 + 65% 空间安全熔断**：自动按目标硬盘总容量的 **50%** 动态调节持久压测文件体积（安全钳制 ≤ 可用空间的 80%，超大阵列上限 2000 GB），全流程收敛至 **20 分钟**。启动前自动扫描硬盘占用，**若占用高于 65% 则自动提示“硬盘空间不足，已自动取消运行”**。
 - **预热测速校准 + 时间加权实时 ETA**：测试前先执行 64 MB 快速读写预热，结合目标盘容量与实测速率计算按时间加权的进度条与实时剩余 `ETA` 倒计时（并在 FIO 顺序写完成后二次校准）。
 - **独立服务器 / VDS / 非 KVM 与多架构全兼容**：自动识别裸金属独服、VDS、KVM/Xen/VMware/Hyper-V 与 LXC/OpenVZ/Docker 容器，兼容 `x86_64` / `aarch64`，支持 FIO 引擎与 `O_DIRECT` 自动降级及 `apt` / `dnf` / `yum` / `apk` / `pacman` / `zypper` 多发行版包管理器。
 - **客观量化评分与纯数据呈现**：内置 **硬盘综合评分（`0–100` / `S+`–`D`）**、独立服务器基准 **超售指数（`0–100`，越低越好）** 与 **多源 IP 综合风控值（`0–100`，完整透明展示各 API 原始构成）**，去除一切主观调优废话。
 - **5 步精简交互与彻底环境清理**：启动即选语言（中/英）；运行前自动检查依赖，不同意安装即安全退出；4 组精简 `[Y/n]` 选测 + Geekbench `5/6/跳过` 选择（跳过项统一标红 **`？？？`**）；仅在开始/结束随机展示颜文字；测试前后及 `Ctrl+C` 中断时按进程组秒杀残留任务并彻底清理临时目录（含 `fstrim`）。
-- **极简炭黑可翻页网页与永久保存**：6 页 NodeQuality 风格炭黑磨砂翻页结果页（支持键盘 `←` / `→` 切换、`17.5px` 大字号自适应宽度 SVG、网页端专属鼠标柔和光影动效），默认长期保存报告（`DQ_TTL_SECONDS=0`，自建亦可选配 TTL），浏览器本地 Canvas 导出 PNG，内置 **复制文本 / 复制为NodeSeek格式（图片多标签）/ 复制为通用Markdown / 导出PNG / SVG** 按钮。
+- **三视图遥测报告**：在可视化看板探索数据、分享独立矢量战报图，或查看六页终端 SVG。按 `V` 切换视图，按 `←` / `→` 翻页，按 `1`–`6` 跳转。报告默认长期保存（`DQ_TTL_SECONDS=0`，亦可设置有效期），支持复制文本、NodeSeek、Markdown，以及导出 2× PNG、SVG 和脱敏 JSON。
+- **交互式一键命令生成器**：在双语首页选择报告语言、时间预算、平台、Geekbench 模式和自动确认，即可复制命令。
+
+---
+
+## 展示效果预览
+
+以下预览基于脱敏的 1 TB KVM 存储节点实测记录，并补充了 Geekbench、并发、互联和 IP 示例数据。战报标明了示例数据，以下图片均由报告渲染器直接生成。
+
+![DiskQuality 矢量战报图预览](assets/preview-card-zh.svg)
+
+<details>
+<summary>终端卡片预览</summary>
+
+![DiskQuality 终端概览预览](assets/preview-terminal-zh.svg)
+
+</details>
 
 ---
 

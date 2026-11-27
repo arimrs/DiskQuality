@@ -1,18 +1,39 @@
 **English** | [简体中文](README.zh-CN.md)
 
-# DiskQuality
+<h1 align="center"><img src="assets/hero-banner.svg" alt="DiskQuality" width="1200"></h1>
 
-[![Version](https://img.shields.io/badge/version-v1.0.8-22c55e.svg)](CHANGELOG.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="CHANGELOG.md"><kbd>v1.0.9</kbd></a>
+  <a href="LICENSE"><kbd>MIT License</kbd></a>
+  <kbd>Python 3</kbd>
+  <kbd>Linux Multi-Arch</kbd>
+  <kbd>EN/ZH Bilingual</kbd>
+</p>
 
-An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux benchmark suite built for **PT seedboxes, storage VPS, backup servers, VDS, and bare-metal dedicated servers**, paired with a minimalist paginated report server.
+An ultra-lightweight, bilingual (**English / 简体中文**), purely objective Linux benchmark suite built for **PT seedboxes, storage VPS, backup servers, VDS, and bare-metal dedicated servers**, paired with a three-mode web report.
 
 - **Adaptive 50% Capacity Algorithm & >65% Disk Guard**: Automatically scales the endurance stress file to **50% of total disk capacity** (clamped to ≤ 80% of free space and ≤ 2,000 GB on large arrays) within a **20-minute budget**. Runs a pre-test disk scan and **automatically cancels if disk usage exceeds 65%**.
 - **Pre-Test Speed Probe & Time-Weighted Live ETA**: Performs a quick 64 MB write/read probe before launching to calculate realistic, time-weighted progress bars and a live remaining `ETA` countdown (recalibrated after FIO sequential write).
 - **Dedicated / VDS / Non-KVM & Multi-Arch Compatible**: Automatically detects Bare-Metal Dedicated Servers, VDS, KVM/Xen/VMware/Hyper-V VPS, and LXC/OpenVZ/Docker containers across `x86_64` and `aarch64`, with automatic FIO `ioengine` / `O_DIRECT` fallback and `apt` / `dnf` / `yum` / `apk` / `pacman` / `zypper` support.
 - **Quantifiable Scores & Pure Objective Data**: Computes an objective **Disk Composite Score (`0–100`, Grade `S+`–`D`)**, a Dedicated-baseline **Overselling Index (`0–100`, lower is better)**, and a **Multi-API Composite IP Risk Score (`0–100`, transparent per-API breakdown)** — zero subjective tuning fluff.
 - **Streamlined 5-Step Interactive Flow & Thorough Cleanup**: Language selection at startup (`zh` / `en`), pre-flight dependency check (exits cleanly if declined), 4 merged `[Y/n]` groups + Geekbench `5/6/Skip` selector (skipped items render as bold red **`???`**), randomized start/end kaomoji, and automatic pre/post/`Ctrl+C` process-group & file cleanup (`fstrim`).
-- **Minimalist Paginated Web Report & Persistent Storage**: 6-page NodeQuality-style matte dark report viewer (`←` / `→` keyboard switching, larger `17.5px` dynamic-width SVG, web-only cursor specular sheen), persistent storage by default (`DQ_TTL_SECONDS=0`, optional TTL supported), client-side Canvas PNG export, and one-click **Copy Text / NodeSeek (image tabs) / Markdown / PNG / SVG** buttons.
+- **Three-Mode Telemetry Studio** — Explore an interactive dashboard, share a standalone vector infographic, or read a six-page terminal SVG. Switch views with `V`, turn terminal pages with `←` / `→`, or jump with `1`–`6`. Reports are persistent by default (`DQ_TTL_SECONDS=0`, with optional TTL) and support Copy Text, Copy NodeSeek, Copy Markdown, 2× PNG, SVG, and sanitized JSON.
+- **Interactive Command Builder** — Pick the report language, time budget, server profile, Geekbench mode, and auto-yes on the bilingual landing page, then copy the command.
+
+---
+
+## Visual Preview
+
+An anonymized 1 TB KVM storage-node report with illustrative Geekbench, concurrency, network, and IP data. The card marks the sample, and these previews are generated directly by the report renderers.
+
+![DiskQuality vector infographic preview](assets/preview-card-en.svg)
+
+<details>
+<summary>Terminal Card preview</summary>
+
+![DiskQuality terminal overview preview](assets/preview-terminal-en.svg)
+
+</details>
 
 ---
 

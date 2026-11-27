@@ -1,5 +1,21 @@
 # Changelog / 更新日志
 
+## v1.0.9 (2026.11.27)
+
+### English
+
+- Added the bilingual Telemetry Studio with an interactive dashboard, a standalone vector card, and the six-page terminal report. Sharing includes 2× PNG, SVG, sanitized JSON, and card-first NodeSeek and Markdown.
+- Added a bilingual one-click command builder with Taipei time and run counters.
+- Refined the CLI and terminal SVG typography with CJK-aware alignment, score bars, and a write-speed sparkline. Reports support sparse and legacy data.
+- Added bilingual README previews rendered from an anonymized storage-node snapshot with supplemental sample metrics.
+
+### 简体中文
+
+- 新增中英双语三视图报告，包含交互看板、独立矢量战报和六页终端卡。支持 2× PNG、SVG、脱敏 JSON，以及战报优先的 NodeSeek 和 Markdown 分享。
+- 新增双语一键命令生成器，展示台北时间和运行次数。
+- 优化 CLI 与终端 SVG 的中英文混排，加入评分条和写入速度趋势。兼容字段不完整的旧报告。
+- 双语 README 新增实渲预览，基于脱敏的存储节点记录及补充示例数据。
+
 ## v1.0.8 (2026.11.26)
 ### English
 - **Bug Fixes & Stability**:
